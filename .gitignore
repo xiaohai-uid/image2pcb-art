@@ -1,0 +1,15 @@
+node_modules/
+.scratch/
+
+# Generated manufacturing/review artifacts and local image inputs.
+*.zip
+*.png
+*.jpg
+*.jpeg
+*.webp
+
+# OS/editor noise.
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

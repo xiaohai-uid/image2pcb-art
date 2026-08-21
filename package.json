@@ -1,0 +1,10 @@
+{
+  "name": "image2pcb-art",
+  "description": "Browser-local PCB material artwork converter with gated six-layer Gerber output",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}

@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#071218" />
+    <meta
+      name="description"
+      content="Image2PCB Art, local-first PCB material artwork converter with a gated Gerber manufacturing package."
+    />
+    <title>Image2PCB Art · Material Lab</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">跳到主要内容</a>
+
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand-lockup" href="./" aria-label="Image2PCB Art 首页">
+          <span class="brand-mark" aria-hidden="true">
+            <span></span><span></span><span></span><span></span>
+          </span>
+          <span>
+            <span class="brand-name">Image2PCB</span>
+            <span class="brand-subtitle">ART / MATERIAL LAB</span>
+          </span>
+        </a>
+
+        <div class="topbar-meta">
+          <span class="local-badge"><span class="status-dot"></span> LOCAL-FIRST</span>
+          <span class="topbar-note">I2P-ART-WEB-V1</span>
+        </div>
+      </header>
+
+      <main id="main-content" class="workspace-grid">
+        <aside class="left-rail" aria-label="项目状态">
+          <section class="rail-intro">
+            <p class="eyebrow">PCB ART CONVERTER</p>
+            <h1>把图像变成材料状态。</h1>
+            <p class="rail-copy">
+              在浏览器本地把图片转换成可检查的 PCB 几何，生成 Gerber 制造包，并保留 SVG 供审阅。
+            </p>
+          </section>
+
+          <nav class="flow-nav" aria-label="制作流程">
+            <p class="eyebrow">WORKFLOW</p>
+            <ol>
+              <li class="flow-step is-active">
+                <span class="flow-index">01</span>
+                <span><strong>Source</strong><small>上传原图</small></span>
+              </li>
+              <li class="flow-step">
+                <span class="flow-index">02</span>
+                <span><strong>Material map</strong><small>映射材料状态</small></span>
+              </li>
+              <li class="flow-step">
+                <span class="flow-index">03</span>
+                <span><strong>Safety check</strong><small>制造规则检查</small></span>
+              </li>
+              <li class="flow-step">
+                <span class="flow-index">04</span>
+                <span><strong>Export</strong><small>输出 Gerber + review</small></span>
+              </li>
+            </ol>
+          </nav>
+
+          <section class="profile-block">
+            <div class="section-heading-row">
+              <p class="eyebrow">MANUFACTURING PROFILE</p>
+              <span class="tiny-label">CANDIDATE</span>
+            </div>
+            <div class="profile-name">Blue Classic</div>
+            <div class="profile-specs">
+              <span>2 LAYER</span>
+              <span>1 OZ CU</span>
+              <span>BLUE MASK</span>
+              <span>WHITE SILK</span>
+              <span>HASL</span>
+            </div>
+            <p class="profile-note">色彩仍需通过真实色卡和实板校准，当前预览不会伪装成工厂保证。</p>
+          </section>
+
+          <div class="rail-footer">
+            <span class="footer-rule"></span>
+            <span>Preview build · browser only</span>
+          </div>
+        </aside>
+
+        <section class="canvas-column" aria-label="PCB 预览">
+          <div class="canvas-toolbar">
+            <div>
+              <p class="eyebrow">MATERIAL PREVIEW</p>
+              <h2>Visual comparison</h2>
+            </div>
+            <div class="canvas-toolbar-actions" role="group" aria-label="预览模式">
+              <button class="view-toggle is-selected" type="button" data-view="compare">Compare</button>
+              <button class="view-toggle" type="button" data-view="pcb">PCB only</button>
+            </div>
+          </div>
+
+          <div class="preview-stage" data-view-mode="compare">
+            <div class="preview-pane original-pane">
+              <div class="pane-label"><span>01</span><strong>ORIGINAL</strong><span class="pane-meta">SOURCE IMAGE</span></div>
+              <div class="canvas-frame">
+                <canvas id="originalCanvas" width="900" height="600" aria-label="原始图片预览"></canvas>
+                <div class="empty-canvas-note" id="originalEmptyNote">
+                  <span class="empty-icon" aria-hidden="true">＋</span>
+                  <strong>从一张图开始</strong>
+                  <span>或先观察内置校准样本</span>
+                </div>
+              </div>
+            </div>
+            <div class="preview-pane pcb-pane">
+              <div class="pane-label"><span>02</span><strong>PCB SIMULATION</strong><span class="pane-meta">APPROXIMATION</span></div>
+              <div class="canvas-frame board-frame">
+                <canvas id="pcbCanvas" width="900" height="600" aria-label="PCB 材料状态模拟预览"></canvas>
+                <div class="board-corner board-corner-tl" aria-hidden="true"></div>
+                <div class="board-corner board-corner-br" aria-hidden="true"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="preview-caption">
+            <span><i class="legend-pip pip-blue"></i> Blue Classic material palette</span>
+            <span><i class="legend-pip pip-grid"></i> 统一原点 · 真实毫米尺寸</span>
+            <span id="sourceLabel">Calibration sample</span>
+          </div>
+
+          <div class="palette-strip" aria-label="材料色板">
+            <div class="palette-heading">
+              <p class="eyebrow">MATERIAL PALETTE</p>
+              <span>6 states</span>
+            </div>
+            <div class="palette-list" id="paletteList"></div>
+          </div>
+
+          <div class="layer-strip">
+            <div class="palette-heading">
+              <p class="eyebrow">LAYER VISIBILITY</p>
+              <span>preview only</span>
+            </div>
+            <div class="layer-toggles" id="layerToggles"></div>
+          </div>
+        </section>
+
+        <aside class="control-column" aria-label="项目控制">
+          <section class="control-section upload-section">
+            <div class="section-heading-row">
+              <div>
+                <p class="eyebrow">SOURCE IMAGE</p>
+                <h2>导入你的图像</h2>
+              </div>
+              <span class="step-count">01</span>
+            </div>
+            <label class="upload-dropzone" for="imageInput" id="uploadDropzone">
+              <input id="imageInput" type="file" accept="image/png,image/jpeg,image/webp" />
+              <span class="upload-symbol" aria-hidden="true">↥</span>
+              <span class="upload-title">拖入 JPG、PNG 或 WebP</span>
+              <span class="upload-hint">图片只在此浏览器处理</span>
+              <span class="upload-action">选择图片</span>
+            </label>
+            <div class="source-status" id="sourceStatus">
+              <span class="status-dot"></span>
+              <span>当前使用内置校准样本</span>
+            </div>
+          </section>
+
+          <section class="control-section">
+            <div class="section-heading-row">
+              <div>
+                <p class="eyebrow">BOARD SETUP</p>
+                <h2>成板规格</h2>
+              </div>
+              <span class="step-count">02</span>
+            </div>
+
+            <div class="field-grid two-col">
+              <label class="field-label">
+                <span>宽度 <small>WIDTH / MM</small></span>
+                <input id="widthInput" type="number" min="30" max="300" step="0.1" value="85.6" />
+              </label>
+              <label class="field-label">
+                <span>高度 <small>HEIGHT / MM</small></span>
+                <input id="heightInput" type="number" min="30" max="300" step="0.1" value="61" />
+              </label>
+            </div>
+
+            <div class="segmented-field">
+              <span class="field-label-text">板角 <small>CORNER</small></span>
+              <div class="segmented-control" role="group" aria-label="板角类型">
+                <button type="button" class="segment-button" data-corner="square">方角</button>
+                <button type="button" class="segment-button is-active" data-corner="rounded">圆角</button>
+              </div>
+            </div>
+
+            <label class="field-label range-label" id="radiusField">
+              <span>圆角半径 <output id="radiusValue">3.0</output><small>RADIUS / MM</small></span>
+              <input id="radiusInput" type="range" min="0" max="12" step="0.5" value="3" />
+            </label>
+          </section>
+
+          <section class="control-section">
+            <div class="section-heading-row">
+              <div>
+                <p class="eyebrow">IMAGE PROCESSING</p>
+                <h2>调整材料表达</h2>
+              </div>
+              <span class="step-count">03</span>
+            </div>
+
+            <label class="field-label range-label">
+              <span>亮度 <output id="brightnessValue">0</output><small>BRIGHTNESS</small></span>
+              <input id="brightnessInput" type="range" min="-30" max="30" step="1" value="0" />
+            </label>
+            <label class="field-label range-label">
+              <span>对比度 <output id="contrastValue">0</output><small>CONTRAST</small></span>
+              <input id="contrastInput" type="range" min="-30" max="30" step="1" value="0" />
+            </label>
+            <label class="field-label range-label">
+              <span>细节等级 <output id="detailValue">62</output><small>DETAIL</small></span>
+              <input id="detailInput" type="range" min="20" max="92" step="1" value="62" />
+            </label>
+            <label class="field-label range-label">
+              <span>边缘平滑 <output id="smoothingValue">28</output><small>SMOOTHING</small></span>
+              <input id="smoothingInput" type="range" min="0" max="70" step="1" value="28" />
+            </label>
+            <label class="field-label range-label">
+              <span>裁剪焦点 <output id="cropValue">50%</output><small>CROP FOCUS</small></span>
+              <input id="cropInput" type="range" min="0" max="100" step="1" value="50" />
+            </label>
+          </section>
+
+          <section class="control-section check-section">
+            <div class="section-heading-row">
+              <div>
+                <p class="eyebrow">MANUFACTURABILITY</p>
+                <h2>制造检查</h2>
+              </div>
+              <span class="step-count">04</span>
+            </div>
+            <div class="readiness-row">
+              <span class="readiness-badge" id="readinessBadge"><span class="status-dot"></span><span id="readinessText">READY</span></span>
+              <span class="readiness-note" id="readinessNote">可生成预览输入</span>
+            </div>
+            <div class="check-list" id="checkList"></div>
+            <div class="warning-box" id="warningBox">
+              <span class="warning-icon" aria-hidden="true">!</span>
+              <span id="warningText">Preview is an approximation. Actual PCB color varies with materials and process.</span>
+            </div>
+          </section>
+
+          <section class="export-section">
+            <div>
+              <p class="eyebrow">EDA INPUTS</p>
+              <h2>导出制造输入</h2>
+              <p>制造 ZIP 只包含可直接交给 Gerber Viewer / JLCPCB 的六个 RS-274X Gerber 文件；SVG、项目配置和报告另存为审阅 ZIP，避免辅助文件污染工厂识别。</p>
+            </div>
+            <div class="export-actions">
+              <button class="primary-button" id="exportButton" type="button">
+                <span>Download manufacturing ZIP</span><span aria-hidden="true">↗</span>
+              </button>
+              <button class="secondary-button" id="reviewExportButton" type="button">
+                <span>Download review bundle</span><span aria-hidden="true">↗</span>
+              </button>
+              <button class="secondary-button" id="resetButton" type="button">恢复校准样本</button>
+            </div>
+          </section>
+        </aside>
+      </main>
+
+      <footer class="app-footer">
+        <span>Preview is an approximation. Actual PCB color varies with manufacturing materials and process.</span>
+        <span>Gerber Viewer → JLCPCB DFM → manufacturing</span>
+      </footer>
+    </div>
+
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>
