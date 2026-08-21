@@ -10,7 +10,7 @@
     />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <title>Image2PCB Art · Material Lab</title>
-    <link rel="stylesheet" href="./styles.css?v=20260821-3" />
+    <link rel="stylesheet" href="./styles.css?v=20260822-1" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">跳到主要内容</a>
@@ -65,6 +65,27 @@
             </ol>
           </nav>
 
+          <details class="beginner-guide">
+            <summary>第一次做 PCB 艺术画？四步上手</summary>
+            <ol class="guide-steps">
+              <li><strong>上传一张图</strong>：点右侧「导入你的图像」，选 JPG / PNG / WebP。图案越简洁效果越好（logo、像素画、星空这类大色块图片最合适）。</li>
+              <li><strong>调板子</strong>：在「成板规格」里设置宽和高（默认 85.6 × 61 mm，和银行卡差不多大），可以选圆角。</li>
+              <li><strong>检查全绿</strong>：右栏「制造检查」全部打勾、状态变成 READY 就说明能制造。红色项旁边有一句「怎么修」，照着做即可。</li>
+              <li><strong>下载 ZIP</strong>：点「Download manufacturing ZIP」，得到一个含 6 个 Gerber 文件的压缩包——这就是工厂认识的文件。</li>
+            </ol>
+            <details class="order-guide">
+              <summary>拿着 ZIP 去嘉立创下单（5 步）</summary>
+              <ol>
+                <li>打开 jlc.com，进入「PCB 订单 → PCB 下单」。</li>
+                <li>把下载的 manufacturing ZIP 直接拖进上传框（不用解压）。</li>
+                <li>按下面选参数：<b>板层 2 层</b> · 板厚 1.6mm（默认）· <b>阻焊颜色 蓝色</b> · <b>丝印颜色 白色</b> · 表面处理 有铅/无铅 HASL 都行。</li>
+                <li>看页面上的 Gerber 预览：应和你在本工具看到的图案一致；深色细节在<b>底层</b>预览里，正面看不到是正常的。</li>
+                <li>付款等收货。打样一般 5 片起、几十元，几天到货。</li>
+              </ol>
+            </details>
+            <p class="guide-note">这块板子没有元件、没有孔，是一块纯装饰艺术板。正面以蓝白两色为主，深色细节在背面。</p>
+          </details>
+
           <section class="profile-block">
             <div class="section-heading-row">
               <p class="eyebrow">MANUFACTURING PROFILE</p>
@@ -112,7 +133,13 @@
               </div>
             </div>
             <div class="preview-pane pcb-pane">
-              <div class="pane-label"><span>02</span><strong>PCB SIMULATION</strong><span class="pane-meta">APPROXIMATION</span></div>
+              <div class="pane-label">
+                <span>02</span><strong>PCB SIMULATION</strong><span class="pane-meta" id="paneMetaPcb">APPROXIMATION · 正面</span>
+                <div class="side-toggle" role="group" aria-label="预览面切换">
+                  <button id="viewTopButton" class="side-button is-active" type="button" title="查看正面（元件面）">正面</button>
+                  <button id="viewBottomButton" class="side-button" type="button" title="查看背面（已水平镜像）">背面</button>
+                </div>
+              </div>
               <div class="canvas-frame board-frame">
                 <canvas id="pcbCanvas" width="900" height="600" aria-label="PCB 材料状态模拟预览"></canvas>
                 <div class="board-corner board-corner-tl" aria-hidden="true"></div>
@@ -278,6 +305,6 @@
     </div>
 
     <!-- Cache-bust: bump the ?v= value here, on the styles.css link in <head>, and on both imports in app.js together. -->
-    <script src="./app.js?v=20260821-3" type="module"></script>
+    <script src="./app.js?v=20260822-1" type="module"></script>
   </body>
 </html>

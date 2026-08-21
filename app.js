@@ -5,10 +5,11 @@ import {
   LAYER_DEFINITIONS,
   buildManufacturingPackage,
   buildReviewPackage,
+  cellEdgeClearanceMm,
   generatePCBArtProject,
   isCellInsideBoard,
-} from "./pcb-core.mjs?v=20260821-3";
-import { quantizeMaterialGrid } from "./image-quantizer.mjs?v=20260821-3";
+} from "./pcb-core.mjs?v=20260822-1";
+import { quantizeMaterialGrid } from "./image-quantizer.mjs?v=20260822-1";
 
 const palette = [
   {
@@ -75,6 +76,7 @@ const state = {
   board: { width: 85.6, height: 61, rounded: true, radius: 3 },
   adjustments: { brightness: 0, contrast: 0, detail: 62, smoothing: 28, cropFocus: 50 },
   visibility: { topCopper: true, topMask: true, bottomCopper: true, bottomMask: true, silk: true },
+  viewSide: "top",
   grid: null,
   gridSize: { cols: 108, rows: 77 },
   autoFixes: { copperEdgeCells: 0, copperRoundedCornerCells: 0, layerBoardContainmentCells: 0 },
@@ -84,6 +86,9 @@ const state = {
 const dom = {
   originalCanvas: document.querySelector("#originalCanvas"),
   pcbCanvas: document.querySelector("#pcbCanvas"),
+  viewTopButton: document.querySelector("#viewTopButton"),
+  viewBottomButton: document.querySelector("#viewBottomButton"),
+  paneMetaPcb: document.querySelector("#paneMetaPcb"),
   originalEmptyNote: document.querySelector("#originalEmptyNote"),
   imageInput: document.querySelector("#imageInput"),
   uploadDropzone: document.querySelector("#uploadDropzone"),
@@ -334,16 +339,12 @@ function buildImageGrid() {
   let copperEdgeCells = 0;
   let copperRoundedCornerCells = 0;
   let layerBoardContainmentCells = 0;
-  const cellWidth = state.board.width / cols;
-  const cellHeight = state.board.height / rows;
 
   for (let cellIndex = 0; cellIndex < quantized.grid.length; cellIndex += 1) {
     let closest = paletteById.get(quantized.grid[cellIndex]);
     const cellX = cellIndex % cols;
     const cellY = Math.floor(cellIndex / cols);
-    const cellLeft = cellX * cellWidth;
-    const cellTop = cellY * cellHeight;
-    const edgeClearance = Math.min(cellLeft, cellTop, state.board.width - cellLeft - cellWidth, state.board.height - cellTop - cellHeight);
+    const edgeClearance = cellEdgeClearanceMm(cellIndex, { cols, rows }, state.board);
     const copperCandidate = closest.layers.topCopper || closest.layers.bottomCopper;
     const needsEdgeFix = copperCandidate && edgeClearance < BLUE_CLASSIC_PROFILE.rules.minCopperEdgeClearanceMm;
     const needsRoundedCornerFix = copperCandidate && state.board.rounded && !isCellInsideBoard(cellIndex, { cols, rows }, state.board);
@@ -364,34 +365,53 @@ function buildImageGrid() {
   return grid;
 }
 
-function maskIsCovered(item, side) {
-  const intent = item.maskIntent[side] === "DEFAULT" ? BLUE_CLASSIC_PROFILE.maskDefault[side] : item.maskIntent[side];
-  return intent === "COVER";
-}
-
 function maskIsOpening(item, side) {
   const intent = item.maskIntent[side] === "DEFAULT" ? BLUE_CLASSIC_PROFILE.maskDefault[side] : item.maskIntent[side];
   return intent === "OPEN";
 }
 
+// Physical single-side rendering. Each board face shows only what is really on
+// that face: bottom copper is invisible from the top (FR4 is opaque), silk
+// exists on the top face only, and mask openings expose whatever sits under
+// them. Layer visibility toggles keep working as inspection aids on top of the
+// physical model.
+const PHYSICAL_COLORS = {
+  blueOverFr4: "#28647b",
+  blueOverCopperDeep: "#163c55",
+  bareFr4: "#b79a6b",
+  hasl: "#b7c2c5",
+};
+
 function visibleMaterialColor(id) {
   const item = paletteById.get(id);
   const layers = item.layers;
   const visible = state.visibility;
-  const topCovered = maskIsCovered(item, "top");
-  const bottomCovered = maskIsCovered(item, "bottom");
 
-  if (layers.silk && visible.silk) return item.color;
-  if (id === "whiteSilk") return visible.topMask && topCovered ? "#28647b" : "#163c55";
-  if (layers.topCopper && !topCovered && visible.topCopper) return item.color;
-  if (layers.topCopper && topCovered && visible.topCopper && visible.topMask) return item.color;
-  if (layers.topCopper && topCovered && visible.topCopper && !visible.topMask) return "#b7c2c5";
-  if (topCovered && visible.topMask) return item.color;
-  if (layers.bottomCopper && bottomCovered && visible.bottomCopper && visible.bottomMask) return item.color;
-  if (layers.bottomCopper && visible.bottomCopper && !bottomCovered) return "#b7c2c5";
-  if (bottomCovered && visible.bottomMask) return "#28647b";
-  if (!layers.topCopper && !layers.bottomCopper && !topCovered && !bottomCovered) return item.color;
-  return "#102e40";
+  if (state.viewSide === "bottom") {
+    if (layers.bottomCopper) {
+      if (visible.bottomCopper && !visible.bottomMask) return PHYSICAL_COLORS.hasl;
+      if (visible.bottomCopper && visible.bottomMask) return item.color;
+      return PHYSICAL_COLORS.blueOverFr4;
+    }
+    if (!visible.bottomMask) return PHYSICAL_COLORS.bareFr4;
+    if (maskIsOpening(item, "bottom") && !layers.bottomCopper) return id === "fr4" ? item.color : PHYSICAL_COLORS.bareFr4;
+    return PHYSICAL_COLORS.blueOverFr4;
+  }
+
+  // Top face
+  if (layers.silk) {
+    if (visible.silk && visible.topMask) return item.color;
+    if (visible.silk && !visible.topMask) return PHYSICAL_COLORS.bareFr4;
+  }
+  if (layers.topCopper) {
+    if (!visible.topCopper) return PHYSICAL_COLORS.blueOverFr4;
+    if (!visible.topMask) return PHYSICAL_COLORS.hasl;
+    if (maskIsOpening(item, "top")) return item.color;
+    return item.color;
+  }
+  if (!visible.topMask) return PHYSICAL_COLORS.bareFr4;
+  if (maskIsOpening(item, "top")) return id === "fr4" ? item.color : PHYSICAL_COLORS.bareFr4;
+  return PHYSICAL_COLORS.blueOverFr4;
 }
 
 function drawGrid(ctx, canvas, rect) {
@@ -408,10 +428,10 @@ function drawGrid(ctx, canvas, rect) {
   ctx.imageSmoothingEnabled = false;
 
   for (let index = 0; index < state.grid.length; index += 1) {
-    const x = index % cols;
+    const col = state.viewSide === "bottom" ? cols - 1 - (index % cols) : index % cols;
     const y = Math.floor(index / cols);
     ctx.fillStyle = visibleMaterialColor(state.grid[index]);
-    ctx.fillRect(rect.x + x * cellWidth, rect.y + y * cellHeight, Math.ceil(cellWidth + 0.3), Math.ceil(cellHeight + 0.3));
+    ctx.fillRect(rect.x + col * cellWidth, rect.y + y * cellHeight, Math.ceil(cellWidth + 0.3), Math.ceil(cellHeight + 0.3));
   }
 
   ctx.restore();
@@ -468,12 +488,47 @@ function renderPcb() {
   drawGrid(ctx, canvas, rect);
 }
 
+const MATERIAL_HINTS = {
+  whiteSilk: "白色丝印——印在蓝色阻焊上的白漆，成品里最亮的颜色",
+  haslSilver: "露铜 + 喷锡（HASL）——没有蓝漆覆盖的铜，呈银白色金属光泽",
+  blueCopper: "蓝漆下的铜——铜上盖蓝油，比无铜处的蓝稍微亮一点",
+  blueFr4: "蓝漆下的玻纤板——经典电路板的蓝色底色",
+  fr4: "裸露基材——阻焊开窗且下面没有铜，露出黄色的玻璃纤维",
+  deepBlue: "底层铜——深色细节会做到背面板上；正面看它就是普通蓝漆，翻到背面才是深蓝图案",
+};
+
+const LAYER_HINTS = {
+  topCopper: "顶层线路铜箔（Gerber GTL）",
+  topMask: "顶层阻焊开窗（GTS）——关掉它可以模拟看到裸露的铜",
+  bottomCopper: "底层线路铜箔（GBL）——实物要翻到背面才可见",
+  bottomMask: "底层阻焊开窗（GBS）",
+  silk: "顶层丝印（GTO）——白色油漆文字/图形",
+};
+
+const CHECK_HINTS = {
+  "source-image": "点右上「导入你的图像」上传一张 JPG / PNG / WebP 图片。",
+  "board-dimensions": "把成板规格里的宽和高调整到 30–300 mm 之间。",
+  "grid-shape": "点「恢复校准样本」重置后再重新上传图片。",
+  "layer-alignment": "内部状态异常：刷新页面，或点「恢复校准样本」。",
+  "corner-geometry": "把圆角半径调小（不能超过短边的一半），或切换为方角。",
+  "minimum-feature": "格子小于 0.25mm 制造极限：降低「细节」滑块、缩小板面内容或增大板子尺寸。",
+  "copper-edge-clearance": "铜离板边太近：量化时通常会自动加安全边框；仍失败就降低细节或微调尺寸。",
+  "layer-board-containment": "有图案越过板框：已自动换成安全材料；若仍失败请重新载入图片。",
+  "geometry-complexity": "格点数超过 24000 上限：降低「细节」滑块，或减小板子尺寸。",
+  "profile-contract": "制造配置异常：刷新页面恢复默认 Blue Classic 档案。",
+  "gerber-round-trip": "内部 Gerber 自检失败：刷新页面重试；若复现请到 GitHub 提 issue。",
+  "board-outline-binding": "板框数据异常：刷新页面，或点「恢复校准样本」。",
+  "mask-intent-contract": "材料阻焊声明缺失：刷新页面恢复默认调色板。",
+  "layer-semantic-contract": "Gerber 声明与图层契约不一致：刷新页面重试。",
+  "cross-layer-semantic-contract": "材料到图层映射不一致：刷新页面重试。",
+};
+
 function renderPalette() {
   dom.paletteList.innerHTML = palette
     .map(
       (item) => `
-        <div class="palette-swatch">
-          <span class="palette-color" style="background:${item.color}" title="${item.label}"></span>
+        <div class="palette-swatch" title="${MATERIAL_HINTS[item.id] || item.label}">
+          <span class="palette-color" style="background:${item.color}"></span>
           <span>${item.shortLabel}</span>
         </div>
       `,
@@ -485,7 +540,7 @@ function renderLayerToggles() {
   dom.layerToggles.innerHTML = layerDefinitions
     .map(
       (layer) => `
-        <button class="layer-toggle${state.visibility[layer.id] ? " is-visible" : ""}" type="button" data-layer="${layer.id}" aria-pressed="${state.visibility[layer.id]}">
+        <button class="layer-toggle${state.visibility[layer.id] ? " is-visible" : ""}" type="button" data-layer="${layer.id}" aria-pressed="${state.visibility[layer.id]}" title="${LAYER_HINTS[layer.id] || layer.label}">
           ${layer.shortLabel}
         </button>
       `,
@@ -508,6 +563,7 @@ function evaluateManufacturability(project) {
           <span class="check-icon">${check.pass ? "✓" : "!"}</span>
           <strong>${check.label}</strong>
           <small>${check.detail}</small>
+          ${check.pass ? "" : `<small class="check-hint">怎么修：${CHECK_HINTS[check.id] || "请刷新页面后重试。"}</small>`}
         </div>
       `,
     )
@@ -697,6 +753,18 @@ function bindEvents() {
       setFeedback(`预览模式：${button.dataset.view === "pcb" ? "PCB only" : "Compare"}`);
     });
   });
+
+  function setViewSide(side) {
+    if (state.viewSide === side) return;
+    state.viewSide = side;
+    dom.viewTopButton.classList.toggle("is-active", side === "top");
+    dom.viewBottomButton.classList.toggle("is-active", side === "bottom");
+    dom.paneMetaPcb.textContent = side === "top" ? "APPROXIMATION · 正面" : "APPROXIMATION · 背面（水平镜像）";
+    renderPcb();
+    setFeedback(side === "top" ? "正在查看正面" : "正在查看背面（已水平镜像，与实物翻面一致）");
+  }
+  dom.viewTopButton.addEventListener("click", () => setViewSide("top"));
+  dom.viewBottomButton.addEventListener("click", () => setViewSide("bottom"));
 
   dom.layerToggles.addEventListener("click", (event) => {
     const button = event.target.closest("[data-layer]");

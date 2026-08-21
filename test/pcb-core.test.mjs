@@ -376,3 +376,39 @@ test("returns a deterministic ZIP with a stable manufacturing package contract",
   assert.match(reviewZipText, /review\/layers\/top-soldermask\.svg/);
   assert.ok(review.fileNames.every((fileName) => !fileName.startsWith("board.")), "review ZIP must not contain manufacturing Gerbers");
 });
+
+test("measures copper clearance to rounded corner arcs, not only straight edges", () => {
+  // 40x40 board, r=10 corners, 1mm cells. The copper cell at grid (row 3, col 3)
+  // maps to board rectangle x:3-4, y:36-37. Its corner (3, 37) sits sqrt(98) ≈
+  // 9.899 mm from the top-left arc centre (10, 30), i.e. only ~0.101 mm inside
+  // the routed edge — yet all four corners are inside the board, so a
+  // straight-edge-only check wrongly reports a 3 mm clearance.
+  const grid = Array(40 * 40).fill("fr4");
+  grid[3 * 40 + 3] = "copper";
+  const project = makeProject({
+    grid,
+    gridSize: { cols: 40, rows: 40 },
+    board: { width: 40, height: 40, rounded: true, radius: 10 },
+  });
+  assert.equal(project.report.status, "BLOCKED");
+  const edgeCheck = project.report.checks.find((check) => check.id === "copper-edge-clearance");
+  assert.equal(edgeCheck.pass, false);
+  assert.ok(
+    project.report.evidence.copperMinimumEdgeClearanceMm < BLUE_CLASSIC_PROFILE.rules.minCopperEdgeClearanceMm,
+    `arc clearance should be below ${BLUE_CLASSIC_PROFILE.rules.minCopperEdgeClearanceMm}, got ${project.report.evidence.copperMinimumEdgeClearanceMm}`,
+  );
+});
+
+test("keeps copper that clears the rounded corner arcs READY", () => {
+  const grid = Array(40 * 40).fill("fr4");
+  grid[6 * 40 + 6] = "copper";
+  const project = makeProject({
+    grid,
+    gridSize: { cols: 40, rows: 40 },
+    board: { width: 40, height: 40, rounded: true, radius: 10 },
+  });
+  assert.equal(project.report.status, "READY");
+  const edgeCheck = project.report.checks.find((check) => check.id === "copper-edge-clearance");
+  assert.equal(edgeCheck.pass, true);
+  assert.ok(project.report.evidence.copperMinimumEdgeClearanceMm >= BLUE_CLASSIC_PROFILE.rules.minCopperEdgeClearanceMm);
+});

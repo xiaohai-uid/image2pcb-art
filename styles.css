@@ -1367,3 +1367,109 @@ input[type="range"]::-moz-range-thumb {
     animation-iteration-count: 1 !important;
   }
 }
+
+/* --- front/back preview side toggle --- */
+.side-toggle {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: auto;
+  padding: 2px;
+  border: 1px solid oklch(83% 0.03 218 / 0.18);
+  border-radius: 5px;
+}
+
+.pcb-pane .pane-meta {
+  margin-left: 0;
+}
+
+.side-button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  padding: 3px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.side-button:hover:not(.is-active) {
+  color: var(--text);
+}
+
+.side-button.is-active {
+  background: var(--warm);
+  color: oklch(18% 0.03 218);
+}
+
+/* --- beginner guide --- */
+.beginner-guide {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid oklch(83% 0.03 218 / 0.14);
+  border-radius: 8px;
+  background: oklch(20% 0.025 218 / 0.55);
+  font-size: 11px;
+  color: var(--text-soft);
+}
+
+.beginner-guide summary {
+  cursor: pointer;
+  color: var(--warm);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  user-select: none;
+}
+
+.beginner-guide[open] summary {
+  margin-bottom: 8px;
+}
+
+.guide-steps {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+  line-height: 1.55;
+}
+
+.guide-steps strong {
+  color: var(--text);
+}
+
+.order-guide {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed oklch(83% 0.03 218 / 0.16);
+}
+
+.order-guide summary {
+  cursor: pointer;
+  color: var(--text);
+  font-size: 11px;
+  user-select: none;
+}
+
+.order-guide ol {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding-left: 18px;
+  line-height: 1.5;
+}
+
+.guide-note {
+  margin: 10px 0 0;
+  color: var(--text-faint);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.check-hint {
+  grid-column: 2 / -1;
+  color: var(--warm) !important;
+  line-height: 1.45;
+}

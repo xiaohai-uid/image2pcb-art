@@ -1,25 +1,47 @@
 # Image2PCB Art
 
-Image2PCB Art 是一个 browser-local PCB 材料艺术转换器，来自 `I2P-ART-WEB-V1` 的第一条 Gerber 制造几何纵向切片。
+把一张图片变成一块**真的可以去嘉立创打样的 PCB 艺术画**。全部处理在浏览器本地完成，图片不会上传到任何服务器。
 
-本项目以 MIT License 开源。应用在浏览器本地处理图片，不上传原图；制造输出仍需使用者自行完成独立 Viewer、工厂 DFM 和实板验证。
+灵感与工艺参考 [oshwhub「梵高星空PCB」](https://oshwhub.com/sytnocui/star-pcb-drawing)：不是彩色丝印，而是把图片颜色量化成**丝印 / 阻焊 / 铜皮**几种真实 PCB 材料的组合——蓝漆、白字、露铜、裸基材，每种颜色都是工厂真的做得出来的。
 
-当前切片包含：
+## 3 分钟上手
+
+1. **打开应用**：本地起个静态服务（见下文 Run locally），或直接用 GitHub Pages。
+2. **上传一张图**：JPG / PNG / WebP 都行。大色块的图效果最好（logo、像素画、星空）。
+3. **检查全绿**：右栏「制造检查」全部打勾、状态变为 READY。红色项旁边有一句「怎么修」。
+4. **下载 ZIP 去下单**：点「Download manufacturing ZIP」，把 ZIP 直接拖进 [jlc.com](https://www.jlc.com) 的 PCB 下单页，参数选：
+
+| 参数 | 选择 |
+|---|---|
+| 板层 | 2 层 |
+| 板厚 | 1.6 mm（默认） |
+| 阻焊颜色 | **蓝色** |
+| 丝印颜色 | **白色** |
+| 表面处理 | 有铅 / 无铅 HASL 均可 |
+
+## 常见问题
+
+- **深色细节去哪了？** 深色区域会映射到**底层铜**：正面看是普通蓝漆，把板子翻到背面才是深蓝图案。预览里点「背面」按钮可以提前看到（已按实物翻面镜像）。
+- **红色 BLOCKED 怎么办？** 每个失败项旁边都写了怎么修。常见原因是格子小于 0.25 mm 制造极限（降低「细节」滑块）或图案贴到了板边（工具会自动加安全边框）。
+- **颜色和实物一致吗？** 预览是近似。Blue Classic 档案仍是 Experimental：正式量产前请先用 Gerber Viewer 复核，并接受首板与预览存在色差。
+- **能做彩色照片吗？** 不能。PCB 天然只有这几种材料色，工具会把照片颜色"折算"到这 6 种状态上，色彩丰富的照片会丢失细节。
+
+## 当前能力
 
 - JPG、PNG、WebP 本地读取，不上传原图
-- Blue Classic candidate palette 的 6 种材料状态预览
+- Blue Classic candidate palette 的 6 种材料状态预览，支持正面 / 背面（镜像）物理真实渲染
 - 原图与 PCB 模拟并排查看
 - 板宽、板高、方角/圆角与圆角半径
 - 亮度、对比度、细节、边缘平滑和裁剪焦点
 - Top Copper、Top Solder Mask、Bottom Copper、Bottom Solder Mask、Top Silkscreen 可见性切换
-- 尺寸、图层对齐、圆角几何、最小特征、铜边缘和复杂度硬检查
-- 铜到板框的实际最小间距检查（Blue Classic 目标 ≥ 0.30 mm），以及圆角板内铜单元包含性检查
+- 尺寸、图层对齐、圆角几何、最小特征、复杂度硬检查
+- 铜到板框的实际最小间距检查（Blue Classic 目标 ≥ 0.30 mm），圆角板按到角弧的真实距离计量，圆角板内铜单元包含性检查
 - 阻焊开窗/丝印板框 containment 与 Material State 到六层 Gerber 的交叉语义硬检查
-- BLOCKED 时禁用正式导出；READY 时一次性下载确定性 Gerber Manufacturing Package ZIP
+- BLOCKED 时禁用正式导出，每个失败项附修正建议；READY 时一次性下载确定性 Gerber Manufacturing Package ZIP
 - Manufacturing ZIP 根目录只含 `board.GTL`、`board.GBL`、`board.GTS`、`board.GBS`、`board.GTO`、`board.GKO`；Review ZIP 单独包含 `project.json`、`manifest.json`、制造报告、指南、SVG 审阅文件和浏览器预览
 - Gerber 层写入标准 X2 `FileFunction`、`FilePolarity`、`Part=Single` 属性；GTS/GBS 声明为 `Soldermask,Top/Bot` 和 `Negative`
 - 每个 material 按 top/bottom 显式声明 `maskIntent`：`COVER`、`OPEN` 或 `DEFAULT`；`DEFAULT` 在 exporter 中按 profile 的 `maskDefault.top/bottom` 解析为 `COVER` 或 `OPEN` 后生成 GTS/GBS
-- 图像量化会把最外圈铜单元自动替换为 FR4 安全边框，并在报告中记录数量
+- 图像量化会把到板边（含圆角弧边）间距不足或越出板框的铜/图层单元自动替换为安全材料，并在报告中记录数量
 
 ## Run locally
 
