@@ -415,10 +415,11 @@ test("keeps copper that clears the rounded corner arcs READY", () => {
 });
 
 test("does not apply corner-arc clearance outside the corner quadrants", () => {
-  // 40x40 board, r=10 corners, 1mm cells. The copper cell at grid (row 21,
-  // col 10) maps to board rectangle x:10-11, y:18-19 — directly below the
-  // top-left arc centre. Its true nearest boundary is the straight left edge
-  // at 10 mm; the arc must not pull the reported clearance down to ~0.94 mm.
+  // 40x40 board, r=10 corners, 1mm cells. The copper cell at grid (row 18,
+  // col 10) maps to screen rectangle x:10-11, y:18-19 — directly below the
+  // top-left arc centre (and outside its quadrant). Its true nearest boundary
+  // is the straight left edge at 10 mm; the arc must not pull the reported
+  // clearance down to ~0.94 mm.
   const grid = Array(40 * 40).fill("fr4");
   grid[18 * 40 + 10] = "copper";
   const project = makeProject({

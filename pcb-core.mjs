@@ -628,8 +628,10 @@ function roundedRectArcCenters(board) {
 // routed corner arcs. Each quarter-arc only bounds its own quadrant cone, so
 // the arc term uses the cell's extreme corner on that diagonal and counts only
 // when that corner lies inside the cone (for an axis-aligned rect this is
-// equivalent to the rect intersecting the cone, and the extreme corner is then
-// the farthest cell point from the arc centre — making the term exact).
+// equivalent to the rect intersecting the cone). The term is exact for cells
+// fully inside or outside the cone; a cell straddling the cone's centre lines
+// can read slightly conservative, which only ever over-reports risk, never
+// hides it.
 export function cellEdgeClearanceMm(index, gridSize, board) {
   const cols = Number(gridSize?.cols) || 0;
   const rows = Number(gridSize?.rows) || 0;
