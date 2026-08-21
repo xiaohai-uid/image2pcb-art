@@ -7,6 +7,7 @@ import {
   buildReviewPackage,
   generatePCBArtProject,
   parseGerber,
+  renderedMaterialColor,
 } from "../pcb-core.mjs";
 
 const materials = [
@@ -411,4 +412,54 @@ test("keeps copper that clears the rounded corner arcs READY", () => {
   const edgeCheck = project.report.checks.find((check) => check.id === "copper-edge-clearance");
   assert.equal(edgeCheck.pass, true);
   assert.ok(project.report.evidence.copperMinimumEdgeClearanceMm >= BLUE_CLASSIC_PROFILE.rules.minCopperEdgeClearanceMm);
+});
+
+test("does not apply corner-arc clearance outside the corner quadrants", () => {
+  // 40x40 board, r=10 corners, 1mm cells. The copper cell at grid (row 21,
+  // col 10) maps to board rectangle x:10-11, y:18-19 — directly below the
+  // top-left arc centre. Its true nearest boundary is the straight left edge
+  // at 10 mm; the arc must not pull the reported clearance down to ~0.94 mm.
+  const grid = Array(40 * 40).fill("fr4");
+  grid[18 * 40 + 10] = "copper";
+  const project = makeProject({
+    grid,
+    gridSize: { cols: 40, rows: 40 },
+    board: { width: 40, height: 40, rounded: true, radius: 10 },
+  });
+  assert.equal(project.report.status, "READY");
+  assert.ok(project.report.evidence.copperMinimumEdgeClearanceMm >= BLUE_CLASSIC_PROFILE.rules.minCopperEdgeClearanceMm);
+});
+
+test("renders each board face with physically-correct material colors", () => {
+  const maskDefault = { top: "COVER", bottom: "COVER" };
+  const allOn = { topCopper: true, topMask: true, bottomCopper: true, bottomMask: true, silk: true };
+  const render = (material, side, visibility = allOn) =>
+    renderedMaterialColor({ material, side, visibility, maskDefault });
+
+  const deepBlue = { id: "deepBlue", color: "#163c55", layers: { topCopper: false, bottomCopper: true, silk: false }, maskIntent: { top: "COVER", bottom: "COVER" } };
+  const whiteSilk = { id: "whiteSilk", color: "#eeeadd", layers: { topCopper: false, bottomCopper: false, silk: true }, maskIntent: { top: "DEFAULT", bottom: "DEFAULT" } };
+  const haslSilver = { id: "haslSilver", color: "#b7c2c5", layers: { topCopper: true, bottomCopper: false, silk: false }, maskIntent: { top: "OPEN", bottom: "DEFAULT" } };
+  const blueCopper = { id: "blueCopper", color: "#4e8da5", layers: { topCopper: true, bottomCopper: false, silk: false }, maskIntent: { top: "COVER", bottom: "DEFAULT" } };
+  const bareFr4 = { id: "fr4", color: "#b79a6b", layers: { topCopper: false, bottomCopper: false, silk: false }, maskIntent: { top: "OPEN", bottom: "OPEN" } };
+
+  // Top face: bottom copper is invisible (FR4 is opaque); silk only on top.
+  assert.equal(render(deepBlue, "top"), "#28647b");
+  assert.equal(render(whiteSilk, "top"), "#eeeadd");
+  assert.equal(render(whiteSilk, "top", { ...allOn, silk: false }), "#28647b");
+  assert.equal(render(haslSilver, "top"), "#b7c2c5");
+  assert.equal(render(haslSilver, "top", { ...allOn, topMask: false }), "#b7c2c5");
+  assert.equal(render(haslSilver, "top", { ...allOn, topCopper: false }), "#28647b");
+  assert.equal(render(blueCopper, "top"), "#4e8da5");
+  assert.equal(render(bareFr4, "top"), "#b79a6b");
+
+  // Bottom face: bottom art shows; top-only features do not.
+  assert.equal(render(deepBlue, "bottom"), "#163c55");
+  assert.equal(render(whiteSilk, "bottom"), "#28647b");
+  assert.equal(render(blueCopper, "bottom"), "#28647b");
+  assert.equal(render(bareFr4, "bottom"), "#b79a6b");
+
+  // Exposed bottom copper (mask OPEN) reads as HASL silver, not its covered color.
+  const exposedBottom = { ...deepBlue, maskIntent: { top: "COVER", bottom: "OPEN" } };
+  assert.equal(render(exposedBottom, "bottom"), "#b7c2c5");
+  assert.equal(render(exposedBottom, "bottom", { ...allOn, bottomCopper: false }), "#28647b");
 });

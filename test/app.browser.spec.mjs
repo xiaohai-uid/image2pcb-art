@@ -28,6 +28,9 @@ test("keeps the local upload, readiness gate, exports, and responsive layout usa
   await expect(page).toHaveTitle("Image2PCB Art · Material Lab");
   await expect((await page.request.get("/favicon.svg")).ok()).toBe(true);
   await expect(page.locator("#readinessText")).toHaveText("BLOCKED");
+  await expect(page.locator(".check-hint").first()).toBeVisible();
+  await expect(page.locator(".beginner-guide > summary")).toContainText("四步上手");
+  await expect(page.locator("#viewTopButton")).toBeVisible();
   await expect(page.locator("#exportButton")).toBeDisabled();
   await expect(page.locator("#reviewExportButton")).toBeDisabled();
 
@@ -56,6 +59,11 @@ test("keeps the local upload, readiness gate, exports, and responsive layout usa
     await expect(output).not.toHaveText(before);
     await expect(page.locator("#adjustmentFeedback")).toContainText("预览已更新");
   }
+
+  await page.locator("#viewBottomButton").click();
+  await expect(page.locator("#paneMetaPcb")).toContainText("背面");
+  await page.locator("#viewTopButton").click();
+  await expect(page.locator("#paneMetaPcb")).toContainText("正面");
 
   for (const layerId of ["topCopper", "topMask", "bottomCopper", "bottomMask", "silk"]) {
     const toggle = page.locator(`[data-layer="${layerId}"]`);

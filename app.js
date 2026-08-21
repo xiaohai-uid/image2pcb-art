@@ -8,8 +8,10 @@ import {
   cellEdgeClearanceMm,
   generatePCBArtProject,
   isCellInsideBoard,
-} from "./pcb-core.mjs?v=20260822-1";
-import { quantizeMaterialGrid } from "./image-quantizer.mjs?v=20260822-1";
+  isSideMaskOpening,
+  renderedMaterialColor,
+} from "./pcb-core.mjs?v=20260822-2";
+import { quantizeMaterialGrid } from "./image-quantizer.mjs?v=20260822-2";
 
 const palette = [
   {
@@ -342,13 +344,13 @@ function buildImageGrid() {
 
   for (let cellIndex = 0; cellIndex < quantized.grid.length; cellIndex += 1) {
     let closest = paletteById.get(quantized.grid[cellIndex]);
-    const cellX = cellIndex % cols;
-    const cellY = Math.floor(cellIndex / cols);
     const edgeClearance = cellEdgeClearanceMm(cellIndex, { cols, rows }, state.board);
     const copperCandidate = closest.layers.topCopper || closest.layers.bottomCopper;
-    const needsEdgeFix = copperCandidate && edgeClearance < BLUE_CLASSIC_PROFILE.rules.minCopperEdgeClearanceMm;
+    const needsEdgeFix = copperCandidate && edgeClearance !== null && edgeClearance < BLUE_CLASSIC_PROFILE.rules.minCopperEdgeClearanceMm;
     const needsRoundedCornerFix = copperCandidate && state.board.rounded && !isCellInsideBoard(cellIndex, { cols, rows }, state.board);
-    const layerCandidate = copperCandidate || closest.layers.silk || maskIsOpening(closest, "top") || maskIsOpening(closest, "bottom");
+    const layerCandidate = copperCandidate || closest.layers.silk
+      || isSideMaskOpening(closest, "top", BLUE_CLASSIC_PROFILE.maskDefault)
+      || isSideMaskOpening(closest, "bottom", BLUE_CLASSIC_PROFILE.maskDefault);
     const needsBoardFitFix = layerCandidate && !isCellInsideBoard(cellIndex, { cols, rows }, state.board);
     if (needsEdgeFix || needsBoardFitFix) {
       closest = paletteById.get("blueFr4");
@@ -363,55 +365,6 @@ function buildImageGrid() {
   state.autoFixes = { copperEdgeCells, copperRoundedCornerCells, layerBoardContainmentCells };
 
   return grid;
-}
-
-function maskIsOpening(item, side) {
-  const intent = item.maskIntent[side] === "DEFAULT" ? BLUE_CLASSIC_PROFILE.maskDefault[side] : item.maskIntent[side];
-  return intent === "OPEN";
-}
-
-// Physical single-side rendering. Each board face shows only what is really on
-// that face: bottom copper is invisible from the top (FR4 is opaque), silk
-// exists on the top face only, and mask openings expose whatever sits under
-// them. Layer visibility toggles keep working as inspection aids on top of the
-// physical model.
-const PHYSICAL_COLORS = {
-  blueOverFr4: "#28647b",
-  blueOverCopperDeep: "#163c55",
-  bareFr4: "#b79a6b",
-  hasl: "#b7c2c5",
-};
-
-function visibleMaterialColor(id) {
-  const item = paletteById.get(id);
-  const layers = item.layers;
-  const visible = state.visibility;
-
-  if (state.viewSide === "bottom") {
-    if (layers.bottomCopper) {
-      if (visible.bottomCopper && !visible.bottomMask) return PHYSICAL_COLORS.hasl;
-      if (visible.bottomCopper && visible.bottomMask) return item.color;
-      return PHYSICAL_COLORS.blueOverFr4;
-    }
-    if (!visible.bottomMask) return PHYSICAL_COLORS.bareFr4;
-    if (maskIsOpening(item, "bottom") && !layers.bottomCopper) return id === "fr4" ? item.color : PHYSICAL_COLORS.bareFr4;
-    return PHYSICAL_COLORS.blueOverFr4;
-  }
-
-  // Top face
-  if (layers.silk) {
-    if (visible.silk && visible.topMask) return item.color;
-    if (visible.silk && !visible.topMask) return PHYSICAL_COLORS.bareFr4;
-  }
-  if (layers.topCopper) {
-    if (!visible.topCopper) return PHYSICAL_COLORS.blueOverFr4;
-    if (!visible.topMask) return PHYSICAL_COLORS.hasl;
-    if (maskIsOpening(item, "top")) return item.color;
-    return item.color;
-  }
-  if (!visible.topMask) return PHYSICAL_COLORS.bareFr4;
-  if (maskIsOpening(item, "top")) return id === "fr4" ? item.color : PHYSICAL_COLORS.bareFr4;
-  return PHYSICAL_COLORS.blueOverFr4;
 }
 
 function drawGrid(ctx, canvas, rect) {
@@ -430,7 +383,12 @@ function drawGrid(ctx, canvas, rect) {
   for (let index = 0; index < state.grid.length; index += 1) {
     const col = state.viewSide === "bottom" ? cols - 1 - (index % cols) : index % cols;
     const y = Math.floor(index / cols);
-    ctx.fillStyle = visibleMaterialColor(state.grid[index]);
+    ctx.fillStyle = renderedMaterialColor({
+      material: paletteById.get(state.grid[index]),
+      side: state.viewSide,
+      visibility: state.visibility,
+      maskDefault: BLUE_CLASSIC_PROFILE.maskDefault,
+    });
     ctx.fillRect(rect.x + col * cellWidth, rect.y + y * cellHeight, Math.ceil(cellWidth + 0.3), Math.ceil(cellHeight + 0.3));
   }
 

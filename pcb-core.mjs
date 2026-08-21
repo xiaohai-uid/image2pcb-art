@@ -154,6 +154,57 @@ function isMaskCovered(material, layerId, profile) {
   return resolvedMaskIntentForLayer(material, layerId, profile) === "COVER";
 }
 
+export function resolvedMaskIntentForSide(material, side, maskDefault) {
+  const intent = material?.maskIntent?.[side];
+  if (intent && intent !== "DEFAULT") return intent;
+  return maskDefault?.[side] || null;
+}
+
+export function isSideMaskOpening(material, side, maskDefault) {
+  return resolvedMaskIntentForSide(material, side, maskDefault) === "OPEN";
+}
+
+// Physical single-face preview colors. Each board face shows only what is
+// really on that face: bottom copper is invisible from the top (FR4 is
+// opaque), silkscreen exists on the top face only, and mask openings expose
+// whatever sits under them. Visibility toggles act as inspection aids on top
+// of this physical model.
+export const RENDER_COLORS = Object.freeze({
+  blueOverFr4: "#28647b",
+  bareFr4: "#b79a6b",
+  hasl: "#b7c2c5",
+});
+
+export function renderedMaterialColor({ material, side, visibility, maskDefault }) {
+  const layers = material.layers || {};
+  const on = (key) => visibility?.[key] !== false;
+  const isOpen = (sideName) => isSideMaskOpening(material, sideName, maskDefault);
+
+  if (side === "bottom") {
+    if (layers.bottomCopper) {
+      if (!on("bottomCopper")) return RENDER_COLORS.blueOverFr4;
+      if (!on("bottomMask") || isOpen("bottom")) return RENDER_COLORS.hasl;
+      return material.color;
+    }
+    if (!on("bottomMask")) return RENDER_COLORS.bareFr4;
+    if (isOpen("bottom")) return material.id === "fr4" ? material.color : RENDER_COLORS.bareFr4;
+    return RENDER_COLORS.blueOverFr4;
+  }
+
+  if (layers.silk) {
+    if (!on("silk")) return RENDER_COLORS.blueOverFr4;
+    return on("topMask") ? material.color : RENDER_COLORS.bareFr4;
+  }
+  if (layers.topCopper) {
+    if (!on("topCopper")) return RENDER_COLORS.blueOverFr4;
+    if (!on("topMask") || isOpen("top")) return RENDER_COLORS.hasl;
+    return material.color;
+  }
+  if (!on("topMask")) return RENDER_COLORS.bareFr4;
+  if (isOpen("top")) return material.id === "fr4" ? material.color : RENDER_COLORS.bareFr4;
+  return RENDER_COLORS.blueOverFr4;
+}
+
 function isMaskOpening(material, layerId, profile) {
   return resolvedMaskIntentForLayer(material, layerId, profile) === "OPEN";
 }
@@ -574,9 +625,11 @@ function roundedRectArcCenters(board) {
 }
 
 // True distance from a grid cell to the board boundary: straight edges plus
-// routed corner arcs. For a cell fully inside the board, the closest approach
-// to each corner arc is radius minus the largest corner-to-centre distance,
-// which is always attained at one of the cell's four corners.
+// routed corner arcs. Each quarter-arc only bounds its own quadrant cone, so
+// the arc term uses the cell's extreme corner on that diagonal and counts only
+// when that corner lies inside the cone (for an axis-aligned rect this is
+// equivalent to the rect intersecting the cone, and the extreme corner is then
+// the farthest cell point from the arc centre — making the term exact).
 export function cellEdgeClearanceMm(index, gridSize, board) {
   const cols = Number(gridSize?.cols) || 0;
   const rows = Number(gridSize?.rows) || 0;
@@ -589,13 +642,12 @@ export function cellEdgeClearanceMm(index, gridSize, board) {
   const maxY = y + cellHeight;
   let clearance = Math.min(x, y, board.width - maxX, board.height - maxY);
   for (const arc of roundedRectArcCenters(board)) {
-    const maxCornerDistance = Math.max(
-      Math.hypot(x - arc.centerX, y - arc.centerY),
-      Math.hypot(maxX - arc.centerX, y - arc.centerY),
-      Math.hypot(maxX - arc.centerX, maxY - arc.centerY),
-      Math.hypot(x - arc.centerX, maxY - arc.centerY),
-    );
-    const arcClearance = arc.radius - maxCornerDistance;
+    const cornerX = arc.centerX <= board.width / 2 ? x : maxX;
+    const cornerY = arc.centerY <= board.height / 2 ? y : maxY;
+    const inCone = arc.centerX <= board.width / 2 ? cornerX <= arc.centerX : cornerX >= arc.centerX;
+    const inConeY = arc.centerY <= board.height / 2 ? cornerY <= arc.centerY : cornerY >= arc.centerY;
+    if (!inCone || !inConeY) continue;
+    const arcClearance = arc.radius - Math.hypot(cornerX - arc.centerX, cornerY - arc.centerY);
     if (arcClearance > 0) clearance = Math.min(clearance, arcClearance);
   }
   return clearance;
@@ -608,7 +660,8 @@ function getCopperBoardClearance(grid, gridSize, materials, board) {
   for (let index = 0; index < grid.length; index += 1) {
     const material = materials.get(grid[index]);
     if (!material || (!hasLayer(material, "topCopper") && !hasLayer(material, "bottomCopper"))) continue;
-    minimumEdgeClearanceMm = Math.min(minimumEdgeClearanceMm, cellEdgeClearanceMm(index, gridSize, board));
+    const clearance = cellEdgeClearanceMm(index, gridSize, board);
+    if (clearance !== null) minimumEdgeClearanceMm = Math.min(minimumEdgeClearanceMm, clearance);
     if (board.rounded && !isCellInsideBoard(index, gridSize, board)) roundedCornerViolations += 1;
   }
 
