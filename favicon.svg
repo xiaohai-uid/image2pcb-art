@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-labelledby="title">
+  <title>Image2PCB Art</title>
+  <rect width="32" height="32" rx="7" fill="#071218"/>
+  <g transform="rotate(45 16 16)">
+    <rect x="8" y="8" width="7" height="7" rx="1" fill="#74d5e8"/>
+    <rect x="17" y="8" width="7" height="7" rx="1" fill="#f0c978"/>
+    <rect x="8" y="17" width="7" height="7" rx="1" fill="#f0c978"/>
+    <rect x="17" y="17" width="7" height="7" rx="1" fill="#74d5e8"/>
+  </g>
+</svg>

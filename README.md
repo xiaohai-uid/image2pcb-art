@@ -23,7 +23,7 @@ Image2PCB Art 是一个 browser-local PCB 材料艺术转换器，来自 `I2P-AR
 
 ## Run locally
 
-这是无依赖静态原型，可以从该目录启动任意静态服务器。例如：
+这是无运行时依赖的静态应用；开发测试额外使用 Playwright 进行真实浏览器冒烟验证。可以从该目录启动任意静态服务器，例如：
 
 ```powershell
 python -m http.server 4173
@@ -40,9 +40,15 @@ python -m http.server 4173
 ## Development
 
 ```powershell
+npm install
 npm test
+npm run check:syntax
+npx playwright install chromium
+npm run test:browser
 python -m http.server 4173
 ```
+
+GitHub Actions 会在 push 和 pull request 上运行核心单测、语法检查和 Chromium 浏览器冒烟测试。
 
 MaTt 的规格、ADR 和工程约束位于 `CONTEXT.md` 与 `docs/`。`.scratch/` 只保留本地验证缓存和临时证据，已加入 `.gitignore`，不会随公开仓库发布。
 

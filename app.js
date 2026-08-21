@@ -1,3 +1,5 @@
+// Cache-bust: bump every ?v= below together with the app.js script tag and the
+// styles.css link in index.html, or a stale module/stylesheet keeps serving.
 import {
   BLUE_CLASSIC_PROFILE,
   LAYER_DEFINITIONS,
@@ -5,7 +7,8 @@ import {
   buildReviewPackage,
   generatePCBArtProject,
   isCellInsideBoard,
-} from "./pcb-core.mjs";
+} from "./pcb-core.mjs?v=20260821-3";
+import { quantizeMaterialGrid } from "./image-quantizer.mjs?v=20260821-3";
 
 const palette = [
   {
@@ -100,6 +103,7 @@ const dom = {
   warningText: document.querySelector("#warningText"),
   exportButton: document.querySelector("#exportButton"),
   reviewExportButton: document.querySelector("#reviewExportButton"),
+  adjustmentFeedback: document.querySelector("#adjustmentFeedback"),
 };
 
 const adjustmentInputs = {
@@ -319,6 +323,13 @@ function buildImageGrid() {
   workCtx.fillRect(0, 0, cols, rows);
   drawImageToRect(workCtx, state.image, { x: 0, y: 0, width: cols, height: rows });
   const imageData = workCtx.getImageData(0, 0, cols, rows).data;
+  const quantized = quantizeMaterialGrid({
+    data: imageData,
+    width: cols,
+    height: rows,
+    palette,
+    diffusionStrength: 0.46,
+  });
   const grid = [];
   let copperEdgeCells = 0;
   let copperRoundedCornerCells = 0;
@@ -326,20 +337,8 @@ function buildImageGrid() {
   const cellWidth = state.board.width / cols;
   const cellHeight = state.board.height / rows;
 
-  for (let index = 0; index < imageData.length; index += 4) {
-    const color = [imageData[index], imageData[index + 1], imageData[index + 2]];
-    let closest = palette[0];
-    let closestDistance = Number.POSITIVE_INFINITY;
-
-    for (const candidate of palette) {
-      const distance = colorDistance(color, candidate.rgb);
-      if (distance < closestDistance) {
-        closest = candidate;
-        closestDistance = distance;
-      }
-    }
-
-    const cellIndex = index / 4;
+  for (let cellIndex = 0; cellIndex < quantized.grid.length; cellIndex += 1) {
+    let closest = paletteById.get(quantized.grid[cellIndex]);
     const cellX = cellIndex % cols;
     const cellY = Math.floor(cellIndex / cols);
     const cellLeft = cellX * cellWidth;
@@ -363,14 +362,6 @@ function buildImageGrid() {
   state.autoFixes = { copperEdgeCells, copperRoundedCornerCells, layerBoardContainmentCells };
 
   return grid;
-}
-
-function colorDistance(a, b) {
-  const redMean = (a[0] + b[0]) / 2;
-  const red = a[0] - b[0];
-  const green = a[1] - b[1];
-  const blue = a[2] - b[2];
-  return ((512 + redMean) * red * red) / 256 + 4 * green * green + ((767 - redMean) * blue * blue) / 256;
 }
 
 function maskIsCovered(item, side) {
@@ -544,6 +535,16 @@ function updateOutputs() {
   dom.radiusInput.value = state.board.radius;
 }
 
+function formatSigned(value) {
+  return value > 0 ? `+${value}` : String(value);
+}
+
+function setFeedback(message = "预览已更新") {
+  if (!dom.adjustmentFeedback) return;
+  const { brightness, contrast, detail, smoothing, cropFocus } = state.adjustments;
+  dom.adjustmentFeedback.textContent = `${message} · 网格 ${state.gridSize.cols} × ${state.gridSize.rows} · 亮度 ${formatSigned(brightness)} · 对比度 ${formatSigned(contrast)} · 细节 ${detail} · 平滑 ${smoothing} · 裁剪 ${cropFocus}%`;
+}
+
 function rebuildGrid() {
   if (state.image) state.grid = buildImageGrid();
   else {
@@ -575,6 +576,7 @@ function renderAll() {
   renderLayerToggles();
   evaluateManufacturability(state.project);
   updateOutputs();
+  setFeedback();
   dom.sourceLabel.textContent = state.sourceName;
   dom.sourceStatus.innerHTML = `<span class="status-dot"></span><span>${state.image ? "本地读取 · 未上传服务器" : "当前使用内置校准样本"}</span>`;
   dom.radiusField.style.opacity = state.board.rounded ? "1" : "0.42";
@@ -601,6 +603,7 @@ function restoreSample() {
   state.sourceName = "Calibration sample";
   dom.imageInput.value = "";
   renderAll();
+  setFeedback("已恢复校准样本");
 }
 
 function downloadBytes(filename, bytes, type = "application/octet-stream") {
@@ -621,6 +624,7 @@ function exportManufacturingPackage() {
   downloadBytes(artifact.packageName, artifact.bytes, "application/zip");
   dom.exportButton.querySelector("span").textContent = `Manufacturing ZIP · ${artifact.fileCount} Gerbers`;
   dom.exportButton.dataset.packageFiles = String(artifact.fileCount);
+  setFeedback("制造 ZIP 已生成");
   window.setTimeout(() => {
     dom.exportButton.querySelector("span").textContent = "Download manufacturing package";
   }, 2600);
@@ -638,6 +642,7 @@ function exportReviewPackage() {
   downloadBytes(artifact.packageName, artifact.bytes, "application/zip");
   dom.reviewExportButton.querySelector("span").textContent = `Review ZIP · ${artifact.fileCount} files`;
   dom.reviewExportButton.dataset.packageFiles = String(artifact.fileCount);
+  setFeedback("评审 ZIP 已生成");
   window.setTimeout(() => {
     dom.reviewExportButton.querySelector("span").textContent = "Download review bundle";
   }, 2600);
@@ -681,6 +686,7 @@ function bindEvents() {
       state.board.rounded = button.dataset.corner === "rounded";
       document.querySelectorAll("[data-corner]").forEach((item) => item.classList.toggle("is-active", item === button));
       renderAll();
+      setFeedback(`板角已切换为${state.board.rounded ? "圆角" : "方角"}`);
     });
   });
 
@@ -688,6 +694,7 @@ function bindEvents() {
     button.addEventListener("click", () => {
       document.querySelectorAll("[data-view]").forEach((item) => item.classList.toggle("is-selected", item === button));
       document.querySelector(".preview-stage").dataset.viewMode = button.dataset.view;
+      setFeedback(`预览模式：${button.dataset.view === "pcb" ? "PCB only" : "Compare"}`);
     });
   });
 
@@ -698,6 +705,7 @@ function bindEvents() {
     state.visibility[layerId] = !state.visibility[layerId];
     renderPcb();
     renderLayerToggles();
+    setFeedback("图层预览已更新");
   });
 
   dom.exportButton.addEventListener("click", exportManufacturingPackage);

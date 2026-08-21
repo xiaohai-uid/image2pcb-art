@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { quantizeMaterialGrid } from "../image-quantizer.mjs";
 import {
   BLUE_CLASSIC_PROFILE,
   buildManufacturingPackage,
@@ -16,6 +17,102 @@ const materials = [
   { id: "silk", layers: { topCopper: false, bottomCopper: false, silk: true }, maskIntent: { top: "DEFAULT", bottom: "DEFAULT" } },
   { id: "bareFr4", layers: { topCopper: false, bottomCopper: false, silk: false }, maskIntent: { top: "OPEN", bottom: "OPEN" } },
 ];
+
+test("diffuses a mid-tone across material states instead of collapsing it to one flat state", () => {
+  const data = new Uint8ClampedArray(8 * 4);
+  for (let index = 0; index < data.length; index += 4) {
+    data[index] = 128;
+    data[index + 1] = 128;
+    data[index + 2] = 128;
+    data[index + 3] = 255;
+  }
+
+  const result = quantizeMaterialGrid({
+    data,
+    width: 8,
+    height: 1,
+    palette: [
+      { id: "dark", rgb: [0, 0, 0] },
+      { id: "light", rgb: [255, 255, 255] },
+    ],
+  });
+
+  assert.deepEqual([...new Set(result.grid)].sort(), ["dark", "light"]);
+  assert.ok(result.metrics.averageLuminance > 90 && result.metrics.averageLuminance < 170);
+});
+
+test("diffuses serpentine rows in alternating directions so no row collapses to one material", () => {
+  const width = 12;
+  const height = 4;
+  const data = new Uint8ClampedArray(width * height * 4);
+  for (let index = 0; index < data.length; index += 4) {
+    data[index] = 128;
+    data[index + 1] = 128;
+    data[index + 2] = 128;
+    data[index + 3] = 255;
+  }
+  const palette = [
+    { id: "dark", rgb: [0, 0, 0] },
+    { id: "light", rgb: [255, 255, 255] },
+  ];
+
+  const result = quantizeMaterialGrid({ data, width, height, palette });
+  const validIds = new Set(palette.map((material) => material.id));
+
+  assert.ok(result.grid.every((id) => validIds.has(id)), "every grid cell must resolve to a palette material");
+  for (let y = 0; y < height; y += 1) {
+    const rowMaterials = new Set(result.grid.slice(y * width, (y + 1) * width));
+    assert.ok(rowMaterials.size > 1, `row ${y} should diffuse instead of collapsing to one material`);
+  }
+  assert.ok(result.metrics.averageLuminance > 90 && result.metrics.averageLuminance < 170);
+});
+
+test("treats an invalid diffusion strength as plain nearest-color matching", () => {
+  const data = new Uint8ClampedArray(8 * 4);
+  for (let index = 0; index < data.length; index += 4) {
+    data[index] = 128;
+    data[index + 1] = 128;
+    data[index + 2] = 128;
+    data[index + 3] = 255;
+  }
+
+  const result = quantizeMaterialGrid({
+    data,
+    width: 8,
+    height: 1,
+    palette: [
+      { id: "dark", rgb: [0, 0, 0] },
+      { id: "light", rgb: [255, 255, 255] },
+    ],
+    diffusionStrength: Number.NaN,
+  });
+
+  assert.equal(new Set(result.grid).size, 1);
+});
+
+test("quantizes a single-column image across serpentine rows without crashing", () => {
+  const height = 6;
+  const data = new Uint8ClampedArray(1 * height * 4);
+  for (let index = 0; index < data.length; index += 4) {
+    data[index] = 128;
+    data[index + 1] = 128;
+    data[index + 2] = 128;
+    data[index + 3] = 255;
+  }
+
+  const result = quantizeMaterialGrid({
+    data,
+    width: 1,
+    height,
+    palette: [
+      { id: "dark", rgb: [0, 0, 0] },
+      { id: "light", rgb: [255, 255, 255] },
+    ],
+  });
+
+  assert.equal(result.grid.length, height);
+  assert.ok(result.grid.every((id) => id === "dark" || id === "light"));
+});
 
 function makeProject(overrides = {}) {
   return generatePCBArtProject({

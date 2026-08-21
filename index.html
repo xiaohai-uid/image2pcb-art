@@ -8,8 +8,9 @@
       name="description"
       content="Image2PCB Art, local-first PCB material artwork converter with a gated Gerber manufacturing package."
     />
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <title>Image2PCB Art · Material Lab</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=20260821-3" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">跳到主要内容</a>
@@ -125,6 +126,8 @@
             <span><i class="legend-pip pip-grid"></i> 统一原点 · 真实毫米尺寸</span>
             <span id="sourceLabel">Calibration sample</span>
           </div>
+
+          <div class="adjustment-feedback" id="adjustmentFeedback" role="status" aria-live="polite">预览已更新</div>
 
           <div class="palette-strip" aria-label="材料色板">
             <div class="palette-heading">
@@ -274,6 +277,7 @@
       </footer>
     </div>
 
-    <script src="./app.js" type="module"></script>
+    <!-- Cache-bust: bump the ?v= value here, on the styles.css link in <head>, and on both imports in app.js together. -->
+    <script src="./app.js?v=20260821-3" type="module"></script>
   </body>
 </html>

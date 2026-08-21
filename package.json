@@ -5,6 +5,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test test/pcb-core.test.mjs",
+    "test:browser": "playwright test",
+    "check:syntax": "node --check app.js && node --check pcb-core.mjs && node --check image-quantizer.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1"
   }
 }
