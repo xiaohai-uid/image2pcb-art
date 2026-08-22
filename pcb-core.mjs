@@ -1,3 +1,5 @@
+import { deltaE76 } from "./image-quantizer.mjs";
+
 const textEncoder = new TextEncoder();
 
 export const LAYER_DEFINITIONS = Object.freeze([
@@ -54,20 +56,77 @@ export const GERBER_DEFINITIONS = Object.freeze([
 
 export const MASK_INTENTS = Object.freeze(["COVER", "OPEN", "DEFAULT"]);
 
-export const BLUE_CLASSIC_PROFILE = Object.freeze({
-  id: "blue-classic",
-  name: "Blue Classic",
-  version: "candidate-0.1",
-  validationStatus: "experimental",
-  rulesVersion: "v1-conservative-artwork",
-  rules: Object.freeze({
-    minFeatureMm: 0.25,
-    minCopperEdgeClearanceMm: 0.3,
-    maxGridCells: 24000,
-  }),
-  maskDefault: Object.freeze({ top: "COVER", bottom: "COVER" }),
-  layers: Object.freeze(LAYER_DEFINITIONS.map((layer) => layer.id)),
+// Colorway tables: the single source every display/quantizer color derives
+// from. Values are JLC standard LPI placeholders pending physical calibration;
+// every colorway is therefore equally EXTERNAL_UNVERIFIED (see ADR 0002).
+export const MASK_COLORWAYS = Object.freeze({
+  green: { label: "绿", english: "Green", overCopper: [30, 122, 62], overFr4: [18, 82, 45] },
+  black: { label: "黑", english: "Black", overCopper: [44, 48, 52], overFr4: [24, 26, 29] },
+  red: { label: "红", english: "Red", overCopper: [168, 48, 44], overFr4: [122, 32, 30] },
+  purple: { label: "紫", english: "Purple", overCopper: [124, 54, 140], overFr4: [86, 36, 100] },
+  yellow: { label: "黄", english: "Yellow", overCopper: [214, 180, 58], overFr4: [190, 156, 42] },
+  blue: { label: "蓝", english: "Blue", overCopper: [78, 141, 165], overFr4: [40, 100, 123] },
+  white: { label: "白", english: "White", overCopper: [238, 238, 234], overFr4: [222, 222, 216] },
 });
+
+export const FINISHES = Object.freeze({
+  hasl: { label: "HASL 喷锡", shortLabel: "HASL", color: [183, 194, 197] },
+  enig: { label: "沉金 ENIG", shortLabel: "ENIG", color: [198, 166, 96] },
+});
+
+const FR4_BASE = [183, 154, 107];
+const SILK_INK = [238, 234, 221];
+const SILK_INK_ON_WHITE_MASK = [38, 38, 40];
+
+function rgbToHex(rgb) {
+  return `#${rgb.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
+}
+
+export function buildProfile({ maskColor = "blue", finish = "hasl" } = {}) {
+  const colorway = MASK_COLORWAYS[maskColor];
+  const finishDefinition = FINISHES[finish];
+  if (!colorway || !finishDefinition) throw new Error(`unknown colorway: ${maskColor}/${finish}`);
+  return Object.freeze({
+    id: `${maskColor}-classic`,
+    name: `${colorway.english} Classic`,
+    version: "candidate-0.2",
+    validationStatus: "experimental",
+    rulesVersion: "v1-conservative-artwork",
+    params: Object.freeze({ maskColor, finish, layerCount: 2 }),
+    rules: Object.freeze({
+      minFeatureMm: 0.25,
+      minCopperEdgeClearanceMm: 0.3,
+      maxGridCells: 24000,
+    }),
+    maskDefault: Object.freeze({ top: "COVER", bottom: "COVER" }),
+    layers: Object.freeze(LAYER_DEFINITIONS.map((layer) => layer.id)),
+    colorway: Object.freeze({
+      silk: [...(maskColor === "white" ? SILK_INK_ON_WHITE_MASK : SILK_INK)],
+      overCopper: [...colorway.overCopper],
+      overFr4: [...colorway.overFr4],
+      opened: [...finishDefinition.color],
+      fr4: [...FR4_BASE],
+      // Identity tone for bottom-copper art: its front face reads as plain
+      // masked FR4, so quantizer targets are darkened toward black to keep
+      // dark image regions landing on the bottom layer.
+      bottomIdentity: colorway.overFr4.map((channel) => Math.round(channel * 0.6)),
+    }),
+  });
+}
+
+export function buildMaterials(profile) {
+  const cw = profile.colorway;
+  const finishShort = FINISHES[profile.params.finish].shortLabel;
+  const definitions = [
+    { id: "silk", label: "丝印墨", shortLabel: "SILK", rgb: cw.silk, hint: "丝印墨——印在板面的图形文字，成品里对比最强的颜色", layers: { topCopper: false, bottomCopper: false, silk: true }, maskIntent: { top: "DEFAULT", bottom: "DEFAULT" } },
+    { id: "openedCopper", label: `露铜 + ${FINISHES[profile.params.finish].label}`, shortLabel: finishShort, rgb: cw.opened, hint: "阻焊开窗处的铜——没有油墨覆盖，呈金属光泽", layers: { topCopper: true, bottomCopper: false, silk: false }, maskIntent: { top: "OPEN", bottom: "DEFAULT" } },
+    { id: "maskedCopper", label: "铜上盖油", shortLabel: "CU", rgb: cw.overCopper, hint: "盖油下的铜——比无铜处亮一点、更饱和", layers: { topCopper: true, bottomCopper: false, silk: false }, maskIntent: { top: "COVER", bottom: "DEFAULT" } },
+    { id: "maskedFr4", label: "基材上盖油", shortLabel: "FR4", rgb: cw.overFr4, hint: "玻纤板上的阻焊——经典的底色", layers: { topCopper: false, bottomCopper: false, silk: false }, maskIntent: { top: "COVER", bottom: "DEFAULT" } },
+    { id: "bareFr4", label: "裸露基材", shortLabel: "BARE", substrateExposed: true, rgb: cw.fr4, hint: "开窗且无铜——露出黄色的玻璃纤维基材", layers: { topCopper: false, bottomCopper: false, silk: false }, maskIntent: { top: "OPEN", bottom: "OPEN" } },
+    { id: "maskedBottomCopper", label: "底层铜艺术", shortLabel: "BACK", rgb: cw.bottomIdentity, hint: "深色细节会做到背面——正面看是普通底色，翻到背面才是图案", layers: { topCopper: false, bottomCopper: true, silk: false }, maskIntent: { top: "COVER", bottom: "COVER" } },
+  ];
+  return definitions.map(({ rgb, ...rest }) => Object.freeze({ ...rest, rgb, color: rgbToHex(rgb), layers: { ...rest.layers }, maskIntent: { ...rest.maskIntent } }));
+}
 
 function finiteNumber(value, fallback = 0) {
   const number = Number(value);
@@ -163,48 +222,59 @@ export function isSideMaskOpening(material, side, maskDefault) {
 // opaque), silkscreen exists on the top face only, and mask openings expose
 // whatever sits under them. Visibility toggles act as inspection aids on top
 // of this physical model.
-export const RENDER_COLORS = Object.freeze({
-  blueOverFr4: "#28647b",
-  bareFr4: "#b79a6b",
-  hasl: "#b7c2c5",
-});
-
 export function renderedMaterialColor({ material, side, visibility, profile }) {
   const layers = material.layers || {};
   const on = (key) => visibility?.[key] !== false;
   const isOpen = (sideName) => isSideMaskOpening(material, sideName, profile?.maskDefault);
   const exposesSubstrate = material.substrateExposed === true;
+  const cw = profile?.colorway || buildProfile().colorway;
+  const overCopper = rgbToHex(cw.overCopper);
+  const coveredFr4 = rgbToHex(cw.overFr4);
+  const bareFr4 = rgbToHex(cw.fr4);
+  const metal = rgbToHex(cw.opened);
 
   if (side === "bottom") {
     if (layers.bottomCopper) {
-      if (!on("bottomCopper")) return RENDER_COLORS.blueOverFr4;
-      if (!on("bottomMask") || isOpen("bottom")) return RENDER_COLORS.hasl;
-      return material.color;
+      if (!on("bottomCopper")) return coveredFr4;
+      if (!on("bottomMask") || isOpen("bottom")) return metal;
+      // Physically the back face is mask-over-copper, not the darkened identity tone.
+      return overCopper;
     }
-    if (!on("bottomMask")) return RENDER_COLORS.bareFr4;
-    if (isOpen("bottom")) return exposesSubstrate ? material.color : RENDER_COLORS.bareFr4;
-    return RENDER_COLORS.blueOverFr4;
+    if (!on("bottomMask")) return bareFr4;
+    if (isOpen("bottom")) return exposesSubstrate ? material.color : bareFr4;
+    return coveredFr4;
   }
 
   if (layers.silk) {
-    if (!on("silk")) return RENDER_COLORS.blueOverFr4;
-    return on("topMask") ? material.color : RENDER_COLORS.bareFr4;
+    if (!on("silk")) return coveredFr4;
+    return on("topMask") ? material.color : bareFr4;
   }
   if (layers.topCopper) {
-    if (!on("topCopper")) return RENDER_COLORS.blueOverFr4;
-    if (!on("topMask") || isOpen("top")) return RENDER_COLORS.hasl;
+    if (!on("topCopper")) return coveredFr4;
+    if (!on("topMask") || isOpen("top")) return metal;
     return material.color;
   }
-  if (!on("topMask")) return RENDER_COLORS.bareFr4;
-  if (isOpen("top")) return exposesSubstrate ? material.color : RENDER_COLORS.bareFr4;
-  return RENDER_COLORS.blueOverFr4;
+  if (!on("topMask")) return bareFr4;
+  if (isOpen("top")) return exposesSubstrate ? material.color : bareFr4;
+  return coveredFr4;
+}
+
+export function findCollisions(materials, threshold = 12) {
+  const pairs = [];
+  for (let i = 0; i < materials.length; i += 1) {
+    for (let j = i + 1; j < materials.length; j += 1) {
+      const deltaE = deltaE76(materials[i].rgb, materials[j].rgb);
+      if (deltaE < threshold) pairs.push({ ids: [materials[i].id, materials[j].id], deltaE });
+    }
+  }
+  return pairs;
 }
 
 function isMaskOpening(material, layerId, profile) {
   return resolvedMaskIntentForLayer(material, layerId, profile) === "OPEN";
 }
 
-function activeCellIndexes(grid, gridSize, materials, layerId, profile = BLUE_CLASSIC_PROFILE) {
+function activeCellIndexes(grid, gridSize, materials, layerId, profile = buildProfile()) {
   const { cols, rows } = gridSize;
   const output = [];
   for (let index = 0; index < grid.length; index += 1) {
@@ -217,7 +287,7 @@ function activeCellIndexes(grid, gridSize, materials, layerId, profile = BLUE_CL
   return output;
 }
 
-function gerberCellIndexes(grid, gridSize, materials, layerId, profile = BLUE_CLASSIC_PROFILE) {
+function gerberCellIndexes(grid, gridSize, materials, layerId, profile = buildProfile()) {
   if (!maskSideForLayer(layerId)) return activeCellIndexes(grid, gridSize, materials, layerId, profile);
   const output = [];
   for (let index = 0; index < grid.length; index += 1) {
@@ -816,7 +886,7 @@ function buildReport({ checks, board, gridSize, profile, layerCounts, autoFixes,
   const warnings = [
     "Gerber file polarity is SPEC_VERIFIED; material-to-mask opening mapping remains EXTERNAL_UNVERIFIED until an independent Gerber Viewer and DFM fixture pass.",
     "Preview is an approximation. Actual PCB color varies with materials and process.",
-    "Blue Classic is Experimental until calibration-card, DFM, and physical-board evidence exists.",
+    `${profile.name} is Experimental until calibration-card, DFM, and physical-board evidence exists. Every colorway shares placeholder LPI colors pending physical calibration.`,
     "Gerber is the primary output; SVG is bundled under review/ for inspection and debugging.",
   ];
   if (autoFixes?.copperEdgeCells) warnings.unshift(`${autoFixes.copperEdgeCells} 个铜单元因板边间距不足已自动替换为 FR4 安全边框。`);
@@ -828,6 +898,7 @@ function buildReport({ checks, board, gridSize, profile, layerCounts, autoFixes,
     validationStatus: "experimental",
     rulesVersion: profile.rulesVersion,
     profileId: profile.id,
+    colorwayParams: { ...(profile.params || {}) },
     checks,
     warnings,
     autoFixes: { ...(autoFixes || {}) },
@@ -912,7 +983,7 @@ function buildGuideHtml({ board, profile, report }) {
     .map((layer) => `<tr><td><code>${escapeHtml(layer.shortLabel)}</code></td><td>${escapeHtml(layer.label)}</td><td><code>layers/${escapeHtml(layer.fileName)}</code></td><td><code>${escapeHtml(layer.intent)}</code></td></tr>`)
     .join("");
   const status = report.status;
-  return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>Image2PCB Art guide</title><style>body{font-family:Arial,sans-serif;max-width:880px;margin:40px auto;color:#18252b;line-height:1.6}code{background:#eef2ef;padding:2px 4px}table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #ccd6d4;padding:8px;text-align:left}h1{font-size:28px}.notice{padding:12px 16px;background:#fff3d7;border-left:4px solid #d28b2d}</style><h1>Image2PCB Art 制板指南</h1><p>板框：<strong>${mm(board.width)} × ${mm(board.height)} mm</strong>；Profile：<strong>${escapeHtml(profile.name)}</strong>（Experimental）；内部状态：<strong>${status}</strong>。</p><div class="notice">制造 ZIP 只含 RS-274X Gerber 六层：GTL、GBL、GTS、GBS、GTO、GKO；审阅 ZIP 另含 SVG、项目配置和报告。当前没有钻孔文件，因为此版本不支持孔。Gerber file polarity：<strong>SPEC_VERIFIED</strong>；material → mask opening mapping：<strong>EXTERNAL_UNVERIFIED</strong>。</div><h2>Gerber 层</h2><table><thead><tr><th>文件</th><th>含义</th><th>语义</th></tr></thead><tbody><tr><td><code>board.GTL</code></td><td>Top Copper</td><td>copper present</td></tr><tr><td><code>board.GBL</code></td><td>Bottom Copper</td><td>copper present</td></tr><tr><td><code>board.GTS</code></td><td>Top Solder Mask</td><td>solder-mask openings · mapping externally unverified</td></tr><tr><td><code>board.GBS</code></td><td>Bottom Solder Mask</td><td>solder-mask openings · mapping externally unverified</td></tr><tr><td><code>board.GTO</code></td><td>Top Silkscreen</td><td>silkscreen present</td></tr><tr><td><code>board.GKO</code></td><td>Board Outline</td><td>one closed outline</td></tr></tbody></table><h2>阻焊意图</h2><p>每个 material 必须为 top/bottom 声明 <code>COVER</code>、<code>OPEN</code> 或 <code>DEFAULT</code>。只有 <code>OPEN</code> 会生成 GTS/GBS opening geometry；<code>COVER</code> 和 <code>DEFAULT</code> 按 Profile 的 <code>maskDefault.top/bottom</code> 解析。</p><h2>检查顺序</h2><ol><li>只把 manufacturing ZIP 的六个根目录 Gerber 上传到 Gerber Viewer/JLCPCB；不要把 review ZIP 当制造上传包。</li><li>确认单位为 mm、下左原点、+X 向右、+Y 向上。</li><li>确认 Top/Bottom Solder Mask 表达的是开窗；X2 file polarity 已按规范声明，但 material mapping 仍需 fab/实板确认。</li><li>确认板框是唯一闭合轮廓且尺寸为 ${mm(board.width)} × ${mm(board.height)} mm。</li><li>查看 Gerber Viewer，再提交 JLCPCB DFM；如果需要人工审阅，可打开 review ZIP 中的 SVG。</li></ol><h2>去嘉立创下单</h2><p>把 manufacturing ZIP 直接拖进 jlc.com 的 PCB 下单页（无需解压），参数选择：<strong>板层 2 层 · 板厚 1.6mm · 阻焊颜色 蓝色 · 丝印颜色 白色 · 表面处理 HASL（有铅/无铅均可）</strong>。下单前在嘉立创 Gerber 预览里确认：图案与预期一致；深色细节在底层预览中，正面看不到属于正常现象（它们是背面铜层艺术）。这块板没有元件和孔，是纯装饰艺术板。</p><p><strong>提示：</strong>Preview is an approximation. Actual PCB color varies with manufacturing materials and process. READY 只代表 Image2PCB 内部检查通过，不代表工厂保证。</p><h2>外部验证清单</h2><p>要把本项目的 Blue Classic 档案从 Experimental 升级为 Validated，需要两步外部验证：① 把本 ZIP 传到 Gerber Viewer（嘉立创预览或 Ucamco 参考查看器）逐层复核极性/原点/镜像；② 真实打样一块并对照预览记录色差。完整步骤见仓库文档 <code>docs/external-validation-checklist.md</code>（<a href="https://github.com/xiaohai-uid/image2pcb-art">github.com/xiaohai-uid/image2pcb-art</a>）。</p></html>`;
+  return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>Image2PCB Art guide</title><style>body{font-family:Arial,sans-serif;max-width:880px;margin:40px auto;color:#18252b;line-height:1.6}code{background:#eef2ef;padding:2px 4px}table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #ccd6d4;padding:8px;text-align:left}h1{font-size:28px}.notice{padding:12px 16px;background:#fff3d7;border-left:4px solid #d28b2d}</style><h1>Image2PCB Art 制板指南</h1><p>板框：<strong>${mm(board.width)} × ${mm(board.height)} mm</strong>；Profile：<strong>${escapeHtml(profile.name)}</strong>（Experimental）；内部状态：<strong>${status}</strong>。</p><div class="notice">制造 ZIP 只含 RS-274X Gerber 六层：GTL、GBL、GTS、GBS、GTO、GKO；审阅 ZIP 另含 SVG、项目配置和报告。当前没有钻孔文件，因为此版本不支持孔。Gerber file polarity：<strong>SPEC_VERIFIED</strong>；material → mask opening mapping：<strong>EXTERNAL_UNVERIFIED</strong>。</div><h2>Gerber 层</h2><table><thead><tr><th>文件</th><th>含义</th><th>语义</th></tr></thead><tbody><tr><td><code>board.GTL</code></td><td>Top Copper</td><td>copper present</td></tr><tr><td><code>board.GBL</code></td><td>Bottom Copper</td><td>copper present</td></tr><tr><td><code>board.GTS</code></td><td>Top Solder Mask</td><td>solder-mask openings · mapping externally unverified</td></tr><tr><td><code>board.GBS</code></td><td>Bottom Solder Mask</td><td>solder-mask openings · mapping externally unverified</td></tr><tr><td><code>board.GTO</code></td><td>Top Silkscreen</td><td>silkscreen present</td></tr><tr><td><code>board.GKO</code></td><td>Board Outline</td><td>one closed outline</td></tr></tbody></table><h2>阻焊意图</h2><p>每个 material 必须为 top/bottom 声明 <code>COVER</code>、<code>OPEN</code> 或 <code>DEFAULT</code>。只有 <code>OPEN</code> 会生成 GTS/GBS opening geometry；<code>COVER</code> 和 <code>DEFAULT</code> 按 Profile 的 <code>maskDefault.top/bottom</code> 解析。</p><h2>检查顺序</h2><ol><li>只把 manufacturing ZIP 的六个根目录 Gerber 上传到 Gerber Viewer/JLCPCB；不要把 review ZIP 当制造上传包。</li><li>确认单位为 mm、下左原点、+X 向右、+Y 向上。</li><li>确认 Top/Bottom Solder Mask 表达的是开窗；X2 file polarity 已按规范声明，但 material mapping 仍需 fab/实板确认。</li><li>确认板框是唯一闭合轮廓且尺寸为 ${mm(board.width)} × ${mm(board.height)} mm。</li><li>查看 Gerber Viewer，再提交 JLCPCB DFM；如果需要人工审阅，可打开 review ZIP 中的 SVG。</li></ol><h2>去嘉立创下单</h2><p>把 manufacturing ZIP 直接拖进 jlc.com 的 PCB 下单页（无需解压），参数选择：<strong>板层 ${profile.params.layerCount} 层 · 板厚 1.6mm · 阻焊颜色 ${MASK_COLORWAYS[profile.params.maskColor].label}色 · 丝印颜色 ${profile.params.maskColor === "white" ? "黑色（对比度守卫自动切换）" : "白色"} · 表面处理 ${FINISHES[profile.params.finish].shortLabel}</strong>。下单前在嘉立创 Gerber 预览里确认：图案与预期一致；深色细节在底层预览中，正面看不到属于正常现象（它们是背面铜层艺术）。这块板没有元件和孔，是纯装饰艺术板。</p><p><strong>提示：</strong>Preview is an approximation. Actual PCB color varies with manufacturing materials and process. READY 只代表 Image2PCB 内部检查通过，不代表工厂保证。</p><h2>下单前：在嘉立创 EDA 里先核验</h2><ol><li>解压 manufacturing ZIP，打开嘉立创 EDA 专业版，菜单 <strong>文件 → 导入 → Gerber</strong>，选中六个 <code>board.G*</code> 文件（只读查看用，不需要也不应该转成可编辑工程）。</li><li>逐层开关核对：GTO 是白字形状；GTS/GBS 是开窗位置；深色细节在 GBL 底层预览中、正面看不到属正常。</li><li>确认满意后回到 jlc.com 下单页重新上传 ZIP，用其自带预览做最后确认再付款。也可以直接把 ZIP 拖进 jlc.com 下单页看预览（更省事）。</li></ol><h2>外部验证清单</h2><p>要把本项目的 ${profile.name} 档案从 Experimental 升级为 Validated，需要两步外部验证：① 把本 ZIP 传到 Gerber Viewer（嘉立创预览或 Ucamco 参考查看器）逐层复核极性/原点/镜像；② 真实打样一块并对照预览记录色差。完整步骤见仓库文档 <code>docs/external-validation-checklist.md</code>（<a href="https://github.com/xiaohai-uid/image2pcb-art">github.com/xiaohai-uid/image2pcb-art</a>）。</p></html>`;
 }
 
 function slugify(value) {
@@ -924,7 +995,7 @@ function slugify(value) {
 }
 
 export function generatePCBArtProject(input = {}) {
-  const profile = input.profile || BLUE_CLASSIC_PROFILE;
+  const profile = input.profile || buildProfile();
   const board = normalizeBoard(input.board);
   const gridSize = {
     cols: positiveInteger(input.gridSize?.cols),

@@ -2,9 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { quantizeMaterialGrid } from "../image-quantizer.mjs";
 import {
-  BLUE_CLASSIC_PROFILE,
   buildManufacturingPackage,
   buildReviewPackage,
+  buildMaterials,
+  buildProfile,
+  findCollisions,
   generatePCBArtProject,
   parseGerber,
   renderedMaterialColor,
@@ -18,6 +20,29 @@ const materials = [
   { id: "silk", layers: { topCopper: false, bottomCopper: false, silk: true }, maskIntent: { top: "DEFAULT", bottom: "DEFAULT" } },
   { id: "bareFr4", layers: { topCopper: false, bottomCopper: false, silk: false }, maskIntent: { top: "OPEN", bottom: "OPEN" } },
 ];
+
+test("matches by CIELAB so a pure neutral beats a chromatic metal at similar lightness gap", () => {
+  // Worked example: black target; silver L*≈76 chroma≈0 → ΔE 77.8;
+  // gold L*≈70 chroma>0 → ΔE 80.5. redmean picks gold (blue-channel overweight);
+  // CIELAB must pick silver.
+  const data = new Uint8ClampedArray(2 * 4);
+  for (let index = 0; index < data.length; index += 4) {
+    data[index + 3] = 255;
+  }
+
+  const result = quantizeMaterialGrid({
+    data,
+    width: 2,
+    height: 1,
+    palette: [
+      { id: "haslSilver", rgb: [183, 194, 197] },
+      { id: "enigGold", rgb: [198, 166, 96] },
+    ],
+    diffusionStrength: 0,
+  });
+
+  assert.equal(result.grid[0], "haslSilver");
+});
 
 test("diffuses a mid-tone across material states instead of collapsing it to one flat state", () => {
   const data = new Uint8ClampedArray(8 * 4);
@@ -128,7 +153,7 @@ function makeProject(overrides = {}) {
     source: { fileName: "fixture.png", width: 640, height: 480 },
     imagePresent: true,
     adjustments: { detail: 62, smoothing: 28, cropFocus: 50, brightness: 0, contrast: 0 },
-    profile: BLUE_CLASSIC_PROFILE,
+    profile: buildProfile(),
     ...overrides,
   });
 }
@@ -298,7 +323,7 @@ test("keeps DEFAULT FR4 covered and only emits explicit OPEN mask intent", () =>
 test("resolves DEFAULT mask intent through the manufacturing profile", () => {
   const project = makeProject({
     board: { width: 100, height: 80, rounded: false, radius: 0 },
-    profile: { ...BLUE_CLASSIC_PROFILE, maskDefault: { top: "OPEN", bottom: "COVER" } },
+    profile: { ...buildProfile(), maskDefault: { top: "OPEN", bottom: "COVER" } },
     grid: Array.from({ length: 12 }, () => "fr4"),
     gridSize: { cols: 4, rows: 3 },
   });
@@ -406,8 +431,8 @@ test("measures copper clearance to rounded corner arcs, not only straight edges"
   const edgeCheck = project.report.checks.find((check) => check.id === "copper-edge-clearance");
   assert.equal(edgeCheck.pass, false);
   assert.ok(
-    project.report.evidence.copperMinimumEdgeClearanceMm < BLUE_CLASSIC_PROFILE.rules.minCopperEdgeClearanceMm,
-    `arc clearance should be below ${BLUE_CLASSIC_PROFILE.rules.minCopperEdgeClearanceMm}, got ${project.report.evidence.copperMinimumEdgeClearanceMm}`,
+    project.report.evidence.copperMinimumEdgeClearanceMm < buildProfile().rules.minCopperEdgeClearanceMm,
+    `arc clearance should be below ${buildProfile().rules.minCopperEdgeClearanceMm}, got ${project.report.evidence.copperMinimumEdgeClearanceMm}`,
   );
 });
 
@@ -422,7 +447,7 @@ test("keeps copper that clears the rounded corner arcs READY", () => {
   assert.equal(project.report.status, "READY");
   const edgeCheck = project.report.checks.find((check) => check.id === "copper-edge-clearance");
   assert.equal(edgeCheck.pass, true);
-  assert.ok(project.report.evidence.copperMinimumEdgeClearanceMm >= BLUE_CLASSIC_PROFILE.rules.minCopperEdgeClearanceMm);
+  assert.ok(project.report.evidence.copperMinimumEdgeClearanceMm >= buildProfile().rules.minCopperEdgeClearanceMm);
 });
 
 test("does not apply corner-arc clearance outside the corner quadrants", () => {
@@ -439,42 +464,107 @@ test("does not apply corner-arc clearance outside the corner quadrants", () => {
     board: { width: 40, height: 40, rounded: true, radius: 10 },
   });
   assert.equal(project.report.status, "READY");
-  assert.ok(project.report.evidence.copperMinimumEdgeClearanceMm >= BLUE_CLASSIC_PROFILE.rules.minCopperEdgeClearanceMm);
+  assert.ok(project.report.evidence.copperMinimumEdgeClearanceMm >= buildProfile().rules.minCopperEdgeClearanceMm);
 });
 
 test("renders each board face with physically-correct material colors", () => {
+  const profile = buildProfile();
+  const materials = new Map(buildMaterials(profile).map((material) => [material.id, material]));
   const allOn = { topCopper: true, topMask: true, bottomCopper: true, bottomMask: true, silk: true };
-  const render = (material, side, visibility = allOn) =>
-    renderedMaterialColor({ material, side, visibility, profile: BLUE_CLASSIC_PROFILE });
-
-  const deepBlue = { id: "deepBlue", color: "#163c55", layers: { topCopper: false, bottomCopper: true, silk: false }, maskIntent: { top: "COVER", bottom: "COVER" } };
-  const whiteSilk = { id: "whiteSilk", color: "#eeeadd", layers: { topCopper: false, bottomCopper: false, silk: true }, maskIntent: { top: "DEFAULT", bottom: "DEFAULT" } };
-  const haslSilver = { id: "haslSilver", color: "#b7c2c5", layers: { topCopper: true, bottomCopper: false, silk: false }, maskIntent: { top: "OPEN", bottom: "DEFAULT" } };
-  const blueCopper = { id: "blueCopper", color: "#4e8da5", layers: { topCopper: true, bottomCopper: false, silk: false }, maskIntent: { top: "COVER", bottom: "DEFAULT" } };
-  const bareFr4 = { id: "fr4", substrateExposed: true, color: "#b79a6b", layers: { topCopper: false, bottomCopper: false, silk: false }, maskIntent: { top: "OPEN", bottom: "OPEN" } };
+  const render = (id, side, visibility = allOn) =>
+    renderedMaterialColor({ material: materials.get(id), side, visibility, profile });
+  // Independent expected literals from the Blue Classic placeholder table:
+  const OVER_COPPER = "#4e8da5";
+  const OVER_FR4 = "#28647b";
+  const HASL = "#b7c2c5";
+  const BARE_FR4 = "#b79a6b";
+  const SILK_INK = "#eeeadd";
 
   // Top face: bottom copper is invisible (FR4 is opaque); silk only on top.
-  assert.equal(render(deepBlue, "top"), "#28647b");
-  assert.equal(render(whiteSilk, "top"), "#eeeadd");
-  assert.equal(render(whiteSilk, "top", { ...allOn, silk: false }), "#28647b");
-  assert.equal(render(haslSilver, "top"), "#b7c2c5");
-  assert.equal(render(haslSilver, "top", { ...allOn, topMask: false }), "#b7c2c5");
-  assert.equal(render(haslSilver, "top", { ...allOn, topCopper: false }), "#28647b");
-  assert.equal(render(blueCopper, "top"), "#4e8da5");
-  assert.equal(render(bareFr4, "top"), "#b79a6b");
+  assert.equal(render("maskedBottomCopper", "top"), OVER_FR4);
+  assert.equal(render("silk", "top"), SILK_INK);
+  assert.equal(render("silk", "top", { ...allOn, silk: false }), OVER_FR4);
+  assert.equal(render("openedCopper", "top"), HASL);
+  assert.equal(render("openedCopper", "top", { ...allOn, topMask: false }), HASL);
+  assert.equal(render("openedCopper", "top", { ...allOn, topCopper: false }), OVER_FR4);
+  assert.equal(render("maskedCopper", "top"), OVER_COPPER);
+  assert.equal(render("bareFr4", "top"), BARE_FR4);
 
   // Bottom face: bottom art shows; top-only features do not.
-  assert.equal(render(deepBlue, "bottom"), "#163c55");
-  assert.equal(render(whiteSilk, "bottom"), "#28647b");
-  assert.equal(render(blueCopper, "bottom"), "#28647b");
-  assert.equal(render(bareFr4, "bottom"), "#b79a6b");
+  // Physically the back face is mask-over-copper, not the darkened identity tone.
+  assert.equal(render("maskedBottomCopper", "bottom"), OVER_COPPER);
+  assert.equal(render("silk", "bottom"), OVER_FR4);
+  assert.equal(render("maskedCopper", "bottom"), OVER_FR4);
+  assert.equal(render("bareFr4", "bottom"), BARE_FR4);
 
-  // Exposed bottom copper (mask OPEN) reads as HASL silver, not its covered color.
-  const exposedBottom = { ...deepBlue, maskIntent: { top: "COVER", bottom: "OPEN" } };
-  assert.equal(render(exposedBottom, "bottom"), "#b7c2c5");
-  assert.equal(render(exposedBottom, "bottom", { ...allOn, bottomCopper: false }), "#28647b");
+  // Exposed bottom copper (mask OPEN) reads as the finish metal, not its covered color.
+  const exposedBottom = { ...materials.get("maskedBottomCopper"), maskIntent: { top: "COVER", bottom: "OPEN" } };
+  assert.equal(renderedMaterialColor({ material: exposedBottom, side: "bottom", visibility: allOn, profile }), HASL);
+  assert.equal(
+    renderedMaterialColor({ material: exposedBottom, side: "bottom", visibility: { ...allOn, bottomCopper: false }, profile }),
+    OVER_FR4,
+  );
 
   // A mask opening over a non-substrate, non-copper face shows bare FR4, not its own color.
-  const blueNoSubstrateFlag = { ...bareFr4, substrateExposed: false, color: "#123456" };
-  assert.equal(render(blueNoSubstrateFlag, "top"), "#b79a6b");
+  const noSubstrateFlag = { ...materials.get("bareFr4"), substrateExposed: false, color: "#123456" };
+  assert.equal(renderedMaterialColor({ material: noSubstrateFlag, side: "top", visibility: allOn, profile }), BARE_FR4);
+});
+
+test("buildProfile parameterizes the manufacturing profile by colorway", () => {
+  const blue = buildProfile();
+  assert.deepEqual(blue.params, { maskColor: "blue", finish: "hasl", layerCount: 2 });
+  assert.equal(blue.name, "Blue Classic");
+  assert.equal(blue.rules.minCopperEdgeClearanceMm, 0.3);
+  assert.deepEqual(blue.maskDefault, { top: "COVER", bottom: "COVER" });
+
+  const green = buildProfile({ maskColor: "green", finish: "enig" });
+  assert.equal(green.name, "Green Classic");
+  assert.deepEqual(green.params, { maskColor: "green", finish: "enig", layerCount: 2 });
+});
+
+test("buildMaterials derives every state color from the active colorway", () => {
+  const blue = buildMaterials(buildProfile());
+  const blueById = new Map(blue.map((material) => [material.id, material]));
+  assert.deepEqual(
+    blue.map((material) => material.id),
+    ["silk", "openedCopper", "maskedCopper", "maskedFr4", "bareFr4", "maskedBottomCopper"],
+  );
+  // Blue Classic keeps its calibrated placeholder values.
+  assert.deepEqual(blueById.get("maskedCopper").rgb, [78, 141, 165]);
+  assert.deepEqual(blueById.get("maskedFr4").rgb, [40, 100, 123]);
+  assert.deepEqual(blueById.get("openedCopper").rgb, [183, 194, 197]);
+  assert.deepEqual(blueById.get("bareFr4").rgb, [183, 154, 107]);
+  assert.deepEqual(blueById.get("silk").rgb, [238, 234, 221]);
+
+  // Switching colorway rebuilds copper/mask tones; FR4 base is colorway-independent.
+  const green = buildMaterials(buildProfile({ maskColor: "green" }));
+  const greenById = new Map(green.map((material) => [material.id, material]));
+  assert.deepEqual(greenById.get("maskedCopper").rgb, [30, 122, 62]);
+  assert.deepEqual(greenById.get("maskedFr4").rgb, [18, 82, 45]);
+  assert.deepEqual(greenById.get("bareFr4").rgb, [183, 154, 107]);
+
+  // Surface finish drives the exposed-copper tone.
+  const enig = buildMaterials(buildProfile({ finish: "enig" }));
+  const enigById = new Map(enig.map((material) => [material.id, material]));
+  assert.deepEqual(enigById.get("openedCopper").rgb, [198, 166, 96]);
+});
+
+test("contrast guard swaps silkscreen ink when it would vanish into the mask", () => {
+  const blueSilk = buildMaterials(buildProfile()).find((m) => m.id === "silk");
+  assert.deepEqual(blueSilk.rgb, [238, 234, 221]);
+
+  const whiteMaskSilk = buildMaterials(buildProfile({ maskColor: "white" })).find((m) => m.id === "silk");
+  assert.deepEqual(whiteMaskSilk.rgb, [38, 38, 40]);
+});
+
+test("collision warnings surface near-identical tones without disabling them", () => {
+  const closePair = [
+    { id: "a", rgb: [198, 166, 96] },
+    { id: "b", rgb: [192, 160, 90] },
+  ];
+  assert.deepEqual(findCollisions(closePair), [{ ids: ["a", "b"], deltaE: findCollisions(closePair)[0].deltaE }]);
+  assert.ok(findCollisions(closePair)[0].deltaE < 12);
+
+  const distinct = buildMaterials(buildProfile());
+  assert.deepEqual(findCollisions(distinct), []);
 });

@@ -75,6 +75,14 @@ test("keeps the local upload, readiness gate, exports, and responsive layout usa
     await expect(toggle).toHaveAttribute("aria-pressed", "true");
   }
 
+  await page.locator('[data-mask="green"]').click();
+  await expect(page.locator('[data-mask="green"]')).toHaveAttribute("aria-checked", "true");
+  await expect(page.locator("#collisionNote")).toBeHidden();
+  await page.locator("#finishSelect").selectOption("enig");
+  await expect(page.locator("#readinessText")).toHaveText("READY");
+  await page.locator('[data-mask="blue"]').click();
+  await page.locator("#finishSelect").selectOption("hasl");
+
   await page.locator('[data-view="pcb"]').click();
   await expect(page.locator(".preview-stage")).toHaveAttribute("data-view-mode", "pcb");
   await expect(page.locator("#adjustmentFeedback")).toContainText("PCB only");

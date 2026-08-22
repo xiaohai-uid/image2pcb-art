@@ -15,7 +15,8 @@
 |---|---|
 | 板层 | 2 层 |
 | 板厚 | 1.6 mm（默认） |
-| 阻焊颜色 | **蓝色** |
+| 阻焊颜色 | 应用内 COLORWAY 任选（绿/黑/红/紫/黄/蓝/白），默认蓝色 |
+| 表面处理 | HASL / 沉金 ENIG，应用内任选 |
 | 丝印颜色 | **白色** |
 | 表面处理 | 有铅 / 无铅 HASL 均可 |
 
@@ -23,13 +24,14 @@
 
 - **深色细节去哪了？** 深色区域会映射到**底层铜**：正面看是普通蓝漆，把板子翻到背面才是深蓝图案。预览里点「背面」按钮可以提前看到（已按实物翻面镜像）。
 - **红色 BLOCKED 怎么办？** 每个失败项旁边都写了怎么修。常见原因是格子小于 0.25 mm 制造极限（降低「细节」滑块）或图案贴到了板边（工具会自动加安全边框）。
-- **颜色和实物一致吗？** 预览是近似。Blue Classic 档案仍是 Experimental：正式量产前请先用 Gerber Viewer 复核，并接受首板与预览存在色差。
+- **颜色和实物一致吗？** 预览是近似。全部配色方案的色值都是 JLC 标准 LPI 占位值、同等未校准（Experimental）：正式量产前请先用 Gerber Viewer 复核，并接受首板与预览存在色差。白板配白丝印会自动换成黑墨（对比度守卫）；两种材料颜色过近时会有撞色提示。
 - **能做彩色照片吗？** 不能。PCB 天然只有这几种材料色，工具会把照片颜色"折算"到这 6 种状态上，色彩丰富的照片会丢失细节。
 
 ## 当前能力
 
 - JPG、PNG、WebP 本地读取，不上传原图
-- Blue Classic candidate palette 的 6 种材料状态预览，支持正面 / 背面（镜像）物理真实渲染
+- 动态调色板：7 种阻焊颜色 × 2 种表面处理即时切换，6 种材料状态预览，支持正面 / 背面（镜像）物理真实渲染
+- 图片 → 材料匹配使用 CIELAB 感知色差 + Floyd–Steinberg 蛇形误差扩散
 - 原图与 PCB 模拟并排查看
 - 板宽、板高、方角/圆角与圆角半径
 - 亮度、对比度、细节、边缘平滑和裁剪焦点
@@ -55,15 +57,15 @@ python -m http.server 4173
 
 ## Product boundary
 
-`READY` 只代表 Image2PCB Art 内部的当前几何、Gerber round-trip、板框绑定、层语义和输入检查通过，不代表 Gerber Viewer、工厂 DFM 或实板确认。当前 Blue Classic 是 Experimental profile，真实颜色仍需通过校准卡、Gerber Viewer、JLCPCB DFM 和实板进行验证。
+`READY` 只代表 Image2PCB Art 内部的当前几何、Gerber round-trip、板框绑定、层语义和输入检查通过，不代表 Gerber Viewer、工厂 DFM 或实板确认。当前所有配色方案共用一套 Experimental 校准状态，真实颜色仍需通过校准卡、Gerber Viewer、JLCPCB DFM 和实板进行验证；通过后方法论可推广至全部配色。
 
 导出的 Gerber ZIP 是 V1 主制造交付；SVG 位于 `review/`，只用于审阅/调试，也不是原生 EasyEDA `.epro` 工程。标准 Gerber file polarity 已按规范写入（`SPEC_VERIFIED`），但 material 到阻焊开窗的映射仍是 `EXTERNAL_UNVERIFIED`；正式送厂前仍需用独立 Gerber Viewer 检查阻焊语义、板框和镜像，再提交 JLCPCB DFM。当前软件尚未声称已通过真实工厂或实板验证。
 
-**想帮忙完成最后一步验证？** 按 [`docs/external-validation-checklist.md`](docs/external-validation-checklist.md) 操作：10 分钟的 Gerber Viewer 逐层复核 + 一单几十元的实物打样比对。通过后 Blue Classic 即可从 Experimental 升级为 Validated。审阅 ZIP 内的制板指南也附带了这份清单的摘要。
+**想帮忙完成最后一步验证？** 按 [`docs/external-validation-checklist.md`](docs/external-validation-checklist.md) 操作：10 分钟的 Gerber Viewer 逐层复核 + 一单几十元的实物打样比对。通过后即可把对应配色从 Experimental 升级为 Validated。审阅 ZIP 内的制板指南也附带了这份清单的摘要。
 
 ## Deployment
 
-推送到 `main` 后，GitHub Actions 先跑完整验证（核心单测 + 语法检查 + Chromium 浏览器冒烟），全部通过才把站点文件部署到 GitHub Pages——线上永远是测试过的那个 commit（workflow 见 `.github/workflows/ci.yml` 的 `verify` → `deploy-pages` 两个任务）。发布以 Git 标签为准（当前 `v1.0.0-rc.1`，发布标签 `SOFTWARE RC / PHYSICAL VALIDATION PENDING`）。
+推送到 `main` 后，GitHub Actions 先跑完整验证（核心单测 + 语法检查 + Chromium 浏览器冒烟），全部通过才把站点文件部署到 GitHub Pages——线上永远是测试过的那个 commit（workflow 见 `.github/workflows/ci.yml` 的 `verify` → `deploy-pages` 两个任务）。发布以 Git 标签为准（当前 `v1.1.0-rc.1`，发布标签 `SOFTWARE RC / PHYSICAL VALIDATION PENDING`，覆盖全部颜色组合）。
 
 ## Development
 

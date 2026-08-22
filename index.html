@@ -10,7 +10,7 @@
     />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <title>Image2PCB Art · Material Lab</title>
-    <link rel="stylesheet" href="./styles.css?v=20260822-4" />
+    <link rel="stylesheet" href="./styles.css?v=20260822-5" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">跳到主要内容</a>
@@ -69,7 +69,7 @@
             <summary>第一次做 PCB 艺术画？四步上手</summary>
             <ol class="guide-steps">
               <li><strong>上传一张图</strong>：点右侧「导入你的图像」，选 JPG / PNG / WebP。图案越简洁效果越好（logo、像素画、星空这类大色块图片最合适）。</li>
-              <li><strong>调板子</strong>：在「成板规格」里设置宽和高（默认 85.6 × 61 mm，和银行卡差不多大），可以选圆角。</li>
+              <li><strong>调板子</strong>：在「成板规格」里设置宽和高（默认 85.6 × 61 mm，和银行卡差不多大），可以选圆角；在「COLORWAY」里选阻焊颜色和表面处理，整块板的配色会即时切换。</li>
               <li><strong>检查全绿</strong>：右栏「制造检查」全部打勾、状态变成 READY 就说明能制造。红色项旁边有一句「怎么修」，照着做即可。</li>
               <li><strong>下载 ZIP</strong>：点「Download manufacturing ZIP」，得到一个含 6 个 Gerber 文件的压缩包——这就是工厂认识的文件。</li>
             </ol>
@@ -78,8 +78,9 @@
               <ol>
                 <li>打开 jlc.com，进入「PCB 订单 → PCB 下单」。</li>
                 <li>把下载的 manufacturing ZIP 直接拖进上传框（不用解压）。</li>
-                <li>按下面选参数：<b>板层 2 层</b> · 板厚 1.6mm（默认）· <b>阻焊颜色 蓝色</b> · <b>丝印颜色 白色</b> · 表面处理 有铅/无铅 HASL 都行。</li>
+                <li>参数以导出指南 HTML 里「去嘉立创下单」一节列出的为准（它跟随你在应用里选的配色自动生成），默认是：板层 2 层 · 板厚 1.6mm。</li>
                 <li>看页面上的 Gerber 预览：应和你在本工具看到的图案一致；深色细节在<b>底层</b>预览里，正面看不到是正常的。</li>
+                <li><b>想更保险？先在嘉立创 EDA 里核验：</b>解压 ZIP，打开嘉立创 EDA 专业版 → 文件 → 导入 → Gerber → 选中六个 <code>board.G*</code> 文件，逐层查看确认满意后再回到下单页付款（导入只是只读查看，不会也不能变成可编辑工程）。</li>
                 <li>付款等收货。打样一般 5 片起、几十元，几天到货。</li>
               </ol>
             </details>
@@ -155,6 +156,16 @@
           </div>
 
           <div class="adjustment-feedback" id="adjustmentFeedback" role="status" aria-live="polite">预览已更新</div>
+
+          <div class="colorway-row" aria-label="配色方案">
+            <div class="palette-heading">
+              <p class="eyebrow">COLORWAY</p>
+              <span>阻焊颜色 × 表面处理</span>
+            </div>
+            <div class="mask-color-row" id="maskColorRow" role="group" aria-label="阻焊颜色"></div>
+            <select id="finishSelect" class="finish-select" aria-label="表面处理"></select>
+            <p class="collision-note" id="collisionNote" role="status" hidden></p>
+          </div>
 
           <div class="palette-strip" aria-label="材料色板">
             <div class="palette-heading">
@@ -305,6 +316,6 @@
     </div>
 
     <!-- Cache-bust: bump the ?v= value here, on the styles.css link in <head>, and on both imports in app.js together. -->
-    <script src="./app.js?v=20260822-4" type="module"></script>
+    <script src="./app.js?v=20260822-5" type="module"></script>
   </body>
 </html>

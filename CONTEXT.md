@@ -12,7 +12,10 @@ Gerber is the V1 primary manufacturing handoff. The manufacturing ZIP contains o
 
 ## Vocabulary
 
-- **Material State** — a semantic PCB material combination used by the preview and mapping stages. It contains appearance hints plus layer-presence flags; it is not an SVG and RGB is not manufacturing truth.
+- **Material State** — a semantic PCB material combination used by the preview and mapping stages. It contains appearance hints plus layer-presence flags; it is not an SVG and RGB is not manufacturing truth. Identifiers name the layer combination (e.g. `maskedCopper`, `maskedBottomCopper`) and never carry a color word — color belongs to the Colorway, not the state.
+- **Colorway（配色方案）** — one combination of solder-mask color and surface finish. It is the single source from which every material state's display color is derived; switching it rebuilds the whole palette. All colorway values are placeholders pending physical calibration, so every colorway is equally `EXTERNAL_UNVERIFIED`.
+- **Contrast Guard（对比度守卫）** — a correctness rule: when the silkscreen ink would be indistinguishable from the chosen solder-mask color (white mask with white ink), the ink is automatically switched to a distinguishable color. Not a user preference.
+- **Collision Warning（撞色警告）** — a user-facing notice raised when two material states' display colors sit below a perceptual-distance threshold (ΔE < 12) under the current colorway. It only warns; the user decides whether to exclude a state.
 - **Canonical Geometry** — board-coordinate geometry in millimetres, independent of the UI renderer. It is the single source for preview and export.
 - **Layer Intent** — the meaning of geometry on one layer. Copper, solder-mask coverage candidate, bottom copper, bottom solder-mask coverage candidate, and top silkscreen are distinct intents.
 - **Mask Intent** — an explicit per-side material state: `COVER`, `OPEN`, or `DEFAULT`. `DEFAULT` is resolved by the manufacturing profile's `maskDefault.top/bottom` contract before solder-mask opening geometry is emitted.

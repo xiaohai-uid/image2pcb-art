@@ -1,85 +1,41 @@
 // Cache-bust: bump every ?v= below together with the app.js script tag and the
 // styles.css link in index.html, or a stale module/stylesheet keeps serving.
 import {
-  BLUE_CLASSIC_PROFILE,
+  FINISHES,
   LAYER_DEFINITIONS,
-  RENDER_COLORS,
+  MASK_COLORWAYS,
   buildManufacturingPackage,
+  buildMaterials,
+  buildProfile,
   buildReviewPackage,
   cellEdgeClearanceMm,
+  findCollisions,
   generatePCBArtProject,
   isCellInsideBoard,
   isSideMaskOpening,
   renderedMaterialColor,
-} from "./pcb-core.mjs?v=20260822-4";
-import { quantizeMaterialGrid } from "./image-quantizer.mjs?v=20260822-4";
+} from "./pcb-core.mjs?v=20260822-5";
+import { quantizeMaterialGrid } from "./image-quantizer.mjs?v=20260822-5";
 
-// Physically derived swatch colors come from the core's single source of truth;
-// the remaining entries are palette identities calibrated for Blue Classic.
-const palette = [
-  {
-    id: "whiteSilk",
-    label: "White silk",
-    shortLabel: "WHITE SILK",
-    color: "#eeeadd",
-    layers: { topCopper: false, bottomCopper: false, silk: true },
-    maskIntent: { top: "DEFAULT", bottom: "DEFAULT" },
-  },
-  {
-    id: "haslSilver",
-    label: "HASL silver",
-    shortLabel: "HASL SILVER",
-    color: RENDER_COLORS.hasl,
-    layers: { topCopper: true, bottomCopper: false, silk: false },
-    maskIntent: { top: "OPEN", bottom: "DEFAULT" },
-  },
-  {
-    id: "blueCopper",
-    label: "Blue + copper",
-    shortLabel: "BLUE + CU",
-    color: "#4e8da5",
-    layers: { topCopper: true, bottomCopper: false, silk: false },
-    maskIntent: { top: "COVER", bottom: "DEFAULT" },
-  },
-  {
-    id: "blueFr4",
-    label: "Blue + FR4",
-    shortLabel: "BLUE + FR4",
-    color: RENDER_COLORS.blueOverFr4,
-    layers: { topCopper: false, bottomCopper: false, silk: false },
-    maskIntent: { top: "COVER", bottom: "DEFAULT" },
-  },
-  {
-    id: "fr4",
-    label: "Bare FR4",
-    shortLabel: "BARE FR4",
-    substrateExposed: true,
-    color: RENDER_COLORS.bareFr4,
-    layers: { topCopper: false, bottomCopper: false, silk: false },
-    maskIntent: { top: "OPEN", bottom: "OPEN" },
-  },
-  {
-    id: "deepBlue",
-    label: "Deep blue",
-    shortLabel: "DEEP BLUE",
-    color: "#163c55",
-    layers: { topCopper: false, bottomCopper: true, silk: false },
-    maskIntent: { top: "COVER", bottom: "COVER" },
-  },
-];
+// The palette is derived from the active colorway (ADR 0002). buildMaterials is
+// the single source for identities, colors, and quantizer targets.
+let palette = null;
+let paletteById = new Map();
 
-// The quantizer targets RGB triplets derived from each swatch's hex, so the
-// hex value is the only place a color is ever written.
-function hexToRgb(hex) {
-  const value = Number.parseInt(String(hex).replace("#", ""), 16);
-  return [(value >> 16) & 255, (value >> 8) & 255, value & 255];
+function setColorway({ maskColor, finish }) {
+  const current = state.profile?.params ?? buildProfile().params;
+  state.profile = buildProfile({
+    maskColor: maskColor ?? current.maskColor,
+    finish: finish ?? current.finish,
+  });
+  palette = buildMaterials(state.profile);
+  paletteById = new Map(palette.map((item) => [item.id, item]));
 }
-
-for (const item of palette) item.rgb = hexToRgb(item.color);
 
 const layerDefinitions = LAYER_DEFINITIONS;
 
 const state = {
+  profile: null,
   image: null,
   sourceName: "Calibration sample",
   board: { width: 85.6, height: 61, rounded: true, radius: 3 },
@@ -92,7 +48,12 @@ const state = {
   project: null,
 };
 
+setColorway({});
+
 const dom = {
+  maskColorRow: document.querySelector("#maskColorRow"),
+  finishSelect: document.querySelector("#finishSelect"),
+  collisionNote: document.querySelector("#collisionNote"),
   originalCanvas: document.querySelector("#originalCanvas"),
   pcbCanvas: document.querySelector("#pcbCanvas"),
   viewTopButton: document.querySelector("#viewTopButton"),
@@ -136,7 +97,6 @@ const adjustmentOutputs = {
   cropFocus: document.querySelector("#cropValue"),
 };
 
-const paletteById = new Map(palette.map((item) => [item.id, item]));
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -284,29 +244,29 @@ function buildSampleGrid() {
       const dy = (ny - 0.51) * 1.08;
       const radial = Math.sqrt(dx * dx + dy * dy);
       const ellipse = Math.sqrt(((nx - 0.52) / 0.42) ** 2 + ((ny - 0.51) / 0.58) ** 2);
-      let id = radial > 0.64 ? "deepBlue" : "blueFr4";
+      let id = radial > 0.64 ? "maskedBottomCopper" : "maskedFr4";
 
-      if (ellipse < 0.28) id = "fr4";
-      if (ellipse < 0.18) id = "blueCopper";
-      if (ellipse < 0.105) id = "haslSilver";
+      if (ellipse < 0.28) id = "bareFr4";
+      if (ellipse < 0.18) id = "maskedCopper";
+      if (ellipse < 0.105) id = "openedCopper";
 
       const ring = Math.abs(ellipse - 0.37);
-      if (ring < 0.026) id = "whiteSilk";
-      if (Math.abs(ellipse - 0.5) < 0.022) id = "haslSilver";
-      if (Math.abs(ellipse - 0.61) < 0.017) id = "blueCopper";
+      if (ring < 0.026) id = "silk";
+      if (Math.abs(ellipse - 0.5) < 0.022) id = "openedCopper";
+      if (Math.abs(ellipse - 0.61) < 0.017) id = "maskedCopper";
 
       for (const [sx, sy] of starPoints) {
         const distance = Math.hypot(nx - sx, ny - sy);
-        if (distance < 0.018) id = "whiteSilk";
-        else if (distance < 0.034) id = "haslSilver";
+        if (distance < 0.018) id = "silk";
+        else if (distance < 0.034) id = "openedCopper";
       }
 
       const hash = Math.abs(Math.sin(x * 12.9898 + y * 78.233) * 43758.5453) % 1;
-      if (hash > 0.987 && radial > 0.22) id = "whiteSilk";
-      else if (hash > 0.968 && radial > 0.35) id = "haslSilver";
+      if (hash > 0.987 && radial > 0.22) id = "silk";
+      else if (hash > 0.968 && radial > 0.35) id = "openedCopper";
 
       if ((x % 17 === 0 && y > rows * 0.17 && y < rows * 0.79) || (y % 21 === 0 && x > cols * 0.17 && x < cols * 0.82)) {
-        id = hash > 0.5 ? "blueCopper" : "haslSilver";
+        id = hash > 0.5 ? "maskedCopper" : "openedCopper";
       }
 
       grid.push(id);
@@ -353,14 +313,14 @@ function buildImageGrid() {
     let closest = paletteById.get(quantized.grid[cellIndex]);
     const edgeClearance = cellEdgeClearanceMm(cellIndex, { cols, rows }, state.board);
     const copperCandidate = closest.layers.topCopper || closest.layers.bottomCopper;
-    const needsEdgeFix = copperCandidate && edgeClearance !== null && edgeClearance < BLUE_CLASSIC_PROFILE.rules.minCopperEdgeClearanceMm;
+    const needsEdgeFix = copperCandidate && edgeClearance !== null && edgeClearance < state.profile.rules.minCopperEdgeClearanceMm;
     const needsRoundedCornerFix = copperCandidate && state.board.rounded && !isCellInsideBoard(cellIndex, { cols, rows }, state.board);
     const layerCandidate = copperCandidate || closest.layers.silk
-      || isSideMaskOpening(closest, "top", BLUE_CLASSIC_PROFILE.maskDefault)
-      || isSideMaskOpening(closest, "bottom", BLUE_CLASSIC_PROFILE.maskDefault);
+      || isSideMaskOpening(closest, "top", state.profile.maskDefault)
+      || isSideMaskOpening(closest, "bottom", state.profile.maskDefault);
     const needsBoardFitFix = layerCandidate && !isCellInsideBoard(cellIndex, { cols, rows }, state.board);
     if (needsEdgeFix || needsBoardFitFix) {
-      closest = paletteById.get("blueFr4");
+      closest = paletteById.get("maskedFr4");
       if (needsEdgeFix) copperEdgeCells += 1;
       if (needsRoundedCornerFix) copperRoundedCornerCells += 1;
       if (needsBoardFitFix) layerBoardContainmentCells += 1;
@@ -394,7 +354,7 @@ function drawGrid(ctx, canvas, rect) {
       material: paletteById.get(state.grid[index]),
       side: state.viewSide,
       visibility: state.visibility,
-      profile: BLUE_CLASSIC_PROFILE,
+      profile: state.profile,
     });
     ctx.fillRect(rect.x + col * cellWidth, rect.y + y * cellHeight, Math.ceil(cellWidth + 0.3), Math.ceil(cellHeight + 0.3));
   }
@@ -453,14 +413,6 @@ function renderPcb() {
   drawGrid(ctx, canvas, rect);
 }
 
-const MATERIAL_HINTS = {
-  whiteSilk: "白色丝印——印在蓝色阻焊上的白漆，成品里最亮的颜色",
-  haslSilver: "露铜 + 喷锡（HASL）——没有蓝漆覆盖的铜，呈银白色金属光泽",
-  blueCopper: "蓝漆下的铜——铜上盖蓝油，比无铜处的蓝稍微亮一点",
-  blueFr4: "蓝漆下的玻纤板——经典电路板的蓝色底色",
-  fr4: "裸露基材——阻焊开窗且下面没有铜，露出黄色的玻璃纤维",
-  deepBlue: "底层铜——深色细节会做到背面板上；正面看它就是普通蓝漆，翻到背面才是深蓝图案",
-};
 
 const LAYER_HINTS = {
   topCopper: "顶层线路铜箔（Gerber GTL）",
@@ -488,11 +440,82 @@ const CHECK_HINTS = {
   "cross-layer-semantic-contract": "材料到图层映射不一致：刷新页面重试。",
 };
 
+function renderCollisions() {
+  const collisions = findCollisions(palette);
+  if (!collisions.length) {
+    dom.collisionNote.hidden = true;
+    dom.collisionNote.textContent = "";
+    return;
+  }
+  const labelOf = (id) => paletteById.get(id)?.label ?? id;
+  const text = collisions
+    .map((pair) => `「${labelOf(pair.ids[0])}」和「${labelOf(pair.ids[1])}」在当前配色下颜色过于接近（ΔE ${pair.deltaE.toFixed(1)}），图案里可能分不出来。`)
+    .join("；");
+  dom.collisionNote.hidden = false;
+  dom.collisionNote.textContent = `撞色提示：${text}。可换配色或忽略。`;
+}
+
+function renderColorways() {
+  dom.maskColorRow.innerHTML = Object.entries(MASK_COLORWAYS)
+    .map(
+      ([key, def]) => `
+        <button type="button" class="colorway-swatch${key === state.profile.params.maskColor ? " is-active" : ""}"
+          data-mask="${key}" role="radio" aria-checked="${key === state.profile.params.maskColor}"
+          title="${def.label}色阻焊（占位色，待实物校准）">
+          <span style="background:#${def.overCopper.map((c) => c.toString(16).padStart(2, "0")).join("")}"></span>${def.label}
+        </button>`,
+    )
+    .join("");
+  dom.finishSelect.innerHTML = Object.entries(FINISHES)
+    .map(([key, def]) => `<option value="${key}"${key === state.profile.params.finish ? " selected" : ""}>${def.label}</option>`)
+    .join("");
+}
+
+function applyColorwayChange(patch) {
+  setColorway(patch);
+  renderColorways();
+  renderPalette();
+  renderCollisions();
+  if (state.grid) {
+    rebuildGrid();
+    state.project = generatePCBArtProject({
+      grid: state.grid,
+      gridSize: state.gridSize,
+      board: state.board,
+      materials: palette,
+      source: {
+        fileName: state.sourceName,
+        width: state.image?.naturalWidth ?? null,
+        height: state.image?.naturalHeight ?? null,
+      },
+      imagePresent: Boolean(state.image),
+      adjustments: state.adjustments,
+      autoFixes: state.autoFixes,
+      profile: state.profile,
+    });
+    renderOriginal();
+    renderPcb();
+    evaluateManufacturability(state.project);
+    updateOutputs();
+    setFeedback();
+  }
+}
+
+dom.maskColorRow.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-mask]");
+  if (!button || button.dataset.mask === state.profile.params.maskColor) return;
+  applyColorwayChange({ maskColor: button.dataset.mask });
+});
+
+dom.finishSelect.addEventListener("change", () => {
+  applyColorwayChange({ finish: dom.finishSelect.value });
+});
+
 function renderPalette() {
   dom.paletteList.innerHTML = palette
     .map(
       (item) => `
-        <div class="palette-swatch" title="${MATERIAL_HINTS[item.id] || item.label}">
+        <div class="palette-swatch" title="${item.hint || item.label}">
           <span class="palette-color" style="background:${item.color}"></span>
           <span>${item.shortLabel}</span>
         </div>
@@ -590,7 +613,7 @@ function renderAll() {
     imagePresent: Boolean(state.image),
     adjustments: state.adjustments,
     autoFixes: state.autoFixes,
-    profile: BLUE_CLASSIC_PROFILE,
+    profile: state.profile,
   });
   renderOriginal();
   renderPcb();
@@ -746,6 +769,8 @@ function bindEvents() {
   document.querySelector("#resetButton").addEventListener("click", restoreSample);
 }
 
+renderColorways();
 renderPalette();
+renderCollisions();
 bindEvents();
 renderAll();

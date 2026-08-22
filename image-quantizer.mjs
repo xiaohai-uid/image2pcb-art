@@ -2,12 +2,27 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
-function colorDistance(a, b) {
-  const redMean = (a[0] + b[0]) / 2;
-  const red = a[0] - b[0];
-  const green = a[1] - b[1];
-  const blue = a[2] - b[2];
-  return ((512 + redMean) * red * red) / 256 + 4 * green * green + ((767 - redMean) * blue * blue) / 256;
+// sRGB → CIELAB (D65). Perceptually uniform enough for a 6-tone palette;
+// CIE76 ΔE is deliberately simple (see ADR 0002 / competitor analysis).
+export function srgbToLab(rgb) {
+  const [r, g, b] = rgb.map((value) => {
+    const channel = clamp(value, 0, 255) / 255;
+    return channel <= 0.04045 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4);
+  });
+  const x = (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047;
+  const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  const z = (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883;
+  const f = (t) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
+  const fx = f(x);
+  const fy = f(y);
+  const fz = f(z);
+  return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
+}
+
+export function deltaE76(a, b) {
+  const labA = srgbToLab(a);
+  const labB = srgbToLab(b);
+  return Math.hypot(labA[0] - labB[0], labA[1] - labB[1], labA[2] - labB[2]);
 }
 
 function addError(work, index, error, weight) {
@@ -17,12 +32,15 @@ function addError(work, index, error, weight) {
   work[offset + 2] += error[2] * weight;
 }
 
-function nearestMaterial(color, palette) {
-  let closest = palette[0];
+function nearestMaterial(color, candidates) {
+  let closest = candidates[0];
   let closestDistance = Number.POSITIVE_INFINITY;
+  const lab = srgbToLab(color);
 
-  for (const candidate of palette) {
-    const distance = colorDistance(color, candidate.rgb);
+  for (const candidate of candidates) {
+    const target = candidate.lab;
+    const distance =
+      (lab[0] - target[0]) ** 2 + (lab[1] - target[1]) ** 2 + (lab[2] - target[2]) ** 2;
     if (distance < closestDistance) {
       closest = candidate;
       closestDistance = distance;
@@ -40,6 +58,7 @@ export function quantizeMaterialGrid({ data, width, height, palette, diffusionSt
     throw new Error("quantizeMaterialGrid requires a non-empty palette");
   }
 
+  const candidates = palette.map((material) => ({ material, lab: srgbToLab(material.rgb) }));
   const work = new Float32Array(width * height * 3);
   for (let index = 0; index < width * height; index += 1) {
     const sourceOffset = index * 4;
@@ -67,7 +86,7 @@ export function quantizeMaterialGrid({ data, width, height, palette, diffusionSt
         clamp(work[offset + 1], 0, 255),
         clamp(work[offset + 2], 0, 255),
       ];
-      const material = nearestMaterial(color, palette);
+      const { material } = nearestMaterial(color, candidates);
       grid[cellIndex] = material.id;
       luminanceTotal += 0.2126 * material.rgb[0] + 0.7152 * material.rgb[1] + 0.0722 * material.rgb[2];
 
