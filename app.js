@@ -3,6 +3,7 @@
 import {
   BLUE_CLASSIC_PROFILE,
   LAYER_DEFINITIONS,
+  RENDER_COLORS,
   buildManufacturingPackage,
   buildReviewPackage,
   cellEdgeClearanceMm,
@@ -10,9 +11,11 @@ import {
   isCellInsideBoard,
   isSideMaskOpening,
   renderedMaterialColor,
-} from "./pcb-core.mjs?v=20260822-2";
-import { quantizeMaterialGrid } from "./image-quantizer.mjs?v=20260822-2";
+} from "./pcb-core.mjs?v=20260822-3";
+import { quantizeMaterialGrid } from "./image-quantizer.mjs?v=20260822-3";
 
+// Physically derived swatch colors come from the core's single source of truth;
+// the remaining entries are palette identities calibrated for Blue Classic.
 const palette = [
   {
     id: "whiteSilk",
@@ -27,7 +30,7 @@ const palette = [
     id: "haslSilver",
     label: "HASL silver",
     shortLabel: "HASL SILVER",
-    color: "#b7c2c5",
+    color: RENDER_COLORS.hasl,
     rgb: [183, 194, 197],
     layers: { topCopper: true, bottomCopper: false, silk: false },
     maskIntent: { top: "OPEN", bottom: "DEFAULT" },
@@ -45,7 +48,7 @@ const palette = [
     id: "blueFr4",
     label: "Blue + FR4",
     shortLabel: "BLUE + FR4",
-    color: "#28647b",
+    color: RENDER_COLORS.blueOverFr4,
     rgb: [40, 100, 123],
     layers: { topCopper: false, bottomCopper: false, silk: false },
     maskIntent: { top: "COVER", bottom: "DEFAULT" },
@@ -54,7 +57,8 @@ const palette = [
     id: "fr4",
     label: "Bare FR4",
     shortLabel: "BARE FR4",
-    color: "#b79a6b",
+    substrateExposed: true,
+    color: RENDER_COLORS.bareFr4,
     rgb: [183, 154, 107],
     layers: { topCopper: false, bottomCopper: false, silk: false },
     maskIntent: { top: "OPEN", bottom: "OPEN" },
@@ -351,8 +355,7 @@ function buildImageGrid() {
     const layerCandidate = copperCandidate || closest.layers.silk
       || isSideMaskOpening(closest, "top", BLUE_CLASSIC_PROFILE.maskDefault)
       || isSideMaskOpening(closest, "bottom", BLUE_CLASSIC_PROFILE.maskDefault);
-    const needsBoardFitFix = layerCandidate && !isCellInsideBoard(cellIndex, { cols, rows }, state.board);
-    if (needsEdgeFix || needsBoardFitFix) {
+    const needsBoardFitFix = layerCandidate && !isCellInsideBoard(cellIndex, { cols, rows }, state.board);    if (needsEdgeFix || needsBoardFitFix) {
       closest = paletteById.get("blueFr4");
       if (needsEdgeFix) copperEdgeCells += 1;
       if (needsRoundedCornerFix) copperRoundedCornerCells += 1;
@@ -387,7 +390,7 @@ function drawGrid(ctx, canvas, rect) {
       material: paletteById.get(state.grid[index]),
       side: state.viewSide,
       visibility: state.visibility,
-      maskDefault: BLUE_CLASSIC_PROFILE.maskDefault,
+      profile: BLUE_CLASSIC_PROFILE,
     });
     ctx.fillRect(rect.x + col * cellWidth, rect.y + y * cellHeight, Math.ceil(cellWidth + 0.3), Math.ceil(cellHeight + 0.3));
   }

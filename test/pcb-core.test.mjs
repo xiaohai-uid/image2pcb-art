@@ -432,16 +432,15 @@ test("does not apply corner-arc clearance outside the corner quadrants", () => {
 });
 
 test("renders each board face with physically-correct material colors", () => {
-  const maskDefault = { top: "COVER", bottom: "COVER" };
   const allOn = { topCopper: true, topMask: true, bottomCopper: true, bottomMask: true, silk: true };
   const render = (material, side, visibility = allOn) =>
-    renderedMaterialColor({ material, side, visibility, maskDefault });
+    renderedMaterialColor({ material, side, visibility, profile: BLUE_CLASSIC_PROFILE });
 
   const deepBlue = { id: "deepBlue", color: "#163c55", layers: { topCopper: false, bottomCopper: true, silk: false }, maskIntent: { top: "COVER", bottom: "COVER" } };
   const whiteSilk = { id: "whiteSilk", color: "#eeeadd", layers: { topCopper: false, bottomCopper: false, silk: true }, maskIntent: { top: "DEFAULT", bottom: "DEFAULT" } };
   const haslSilver = { id: "haslSilver", color: "#b7c2c5", layers: { topCopper: true, bottomCopper: false, silk: false }, maskIntent: { top: "OPEN", bottom: "DEFAULT" } };
   const blueCopper = { id: "blueCopper", color: "#4e8da5", layers: { topCopper: true, bottomCopper: false, silk: false }, maskIntent: { top: "COVER", bottom: "DEFAULT" } };
-  const bareFr4 = { id: "fr4", color: "#b79a6b", layers: { topCopper: false, bottomCopper: false, silk: false }, maskIntent: { top: "OPEN", bottom: "OPEN" } };
+  const bareFr4 = { id: "fr4", substrateExposed: true, color: "#b79a6b", layers: { topCopper: false, bottomCopper: false, silk: false }, maskIntent: { top: "OPEN", bottom: "OPEN" } };
 
   // Top face: bottom copper is invisible (FR4 is opaque); silk only on top.
   assert.equal(render(deepBlue, "top"), "#28647b");
@@ -463,4 +462,8 @@ test("renders each board face with physically-correct material colors", () => {
   const exposedBottom = { ...deepBlue, maskIntent: { top: "COVER", bottom: "OPEN" } };
   assert.equal(render(exposedBottom, "bottom"), "#b7c2c5");
   assert.equal(render(exposedBottom, "bottom", { ...allOn, bottomCopper: false }), "#28647b");
+
+  // A mask opening over a non-substrate, non-copper face shows bare FR4, not its own color.
+  const blueNoSubstrateFlag = { ...bareFr4, substrateExposed: false, color: "#123456" };
+  assert.equal(render(blueNoSubstrateFlag, "top"), "#b79a6b");
 });

@@ -126,16 +126,10 @@ function maskSideForLayer(layerId) {
   return null;
 }
 
-function maskIntentForLayer(material, layerId) {
-  const side = maskSideForLayer(layerId);
-  return side ? material?.maskIntent?.[side] : null;
-}
-
 function resolvedMaskIntentForLayer(material, layerId, profile) {
   const side = maskSideForLayer(layerId);
-  const intent = maskIntentForLayer(material, layerId);
-  if (intent !== "DEFAULT") return intent;
-  return profile?.maskDefault?.[side] || null;
+  if (!side) return null;
+  return resolvedMaskIntentForSide(material, side, profile?.maskDefault);
 }
 
 function isValidMaskIntent(material, side) {
@@ -175,10 +169,11 @@ export const RENDER_COLORS = Object.freeze({
   hasl: "#b7c2c5",
 });
 
-export function renderedMaterialColor({ material, side, visibility, maskDefault }) {
+export function renderedMaterialColor({ material, side, visibility, profile }) {
   const layers = material.layers || {};
   const on = (key) => visibility?.[key] !== false;
-  const isOpen = (sideName) => isSideMaskOpening(material, sideName, maskDefault);
+  const isOpen = (sideName) => isSideMaskOpening(material, sideName, profile?.maskDefault);
+  const exposesSubstrate = material.substrateExposed === true;
 
   if (side === "bottom") {
     if (layers.bottomCopper) {
@@ -187,7 +182,7 @@ export function renderedMaterialColor({ material, side, visibility, maskDefault 
       return material.color;
     }
     if (!on("bottomMask")) return RENDER_COLORS.bareFr4;
-    if (isOpen("bottom")) return material.id === "fr4" ? material.color : RENDER_COLORS.bareFr4;
+    if (isOpen("bottom")) return exposesSubstrate ? material.color : RENDER_COLORS.bareFr4;
     return RENDER_COLORS.blueOverFr4;
   }
 
@@ -201,7 +196,7 @@ export function renderedMaterialColor({ material, side, visibility, maskDefault 
     return material.color;
   }
   if (!on("topMask")) return RENDER_COLORS.bareFr4;
-  if (isOpen("top")) return material.id === "fr4" ? material.color : RENDER_COLORS.bareFr4;
+  if (isOpen("top")) return exposesSubstrate ? material.color : RENDER_COLORS.bareFr4;
   return RENDER_COLORS.blueOverFr4;
 }
 
@@ -644,11 +639,13 @@ export function cellEdgeClearanceMm(index, gridSize, board) {
   const maxY = y + cellHeight;
   let clearance = Math.min(x, y, board.width - maxX, board.height - maxY);
   for (const arc of roundedRectArcCenters(board)) {
-    const cornerX = arc.centerX <= board.width / 2 ? x : maxX;
-    const cornerY = arc.centerY <= board.height / 2 ? y : maxY;
-    const inCone = arc.centerX <= board.width / 2 ? cornerX <= arc.centerX : cornerX >= arc.centerX;
-    const inConeY = arc.centerY <= board.height / 2 ? cornerY <= arc.centerY : cornerY >= arc.centerY;
-    if (!inCone || !inConeY) continue;
+    const leftArc = arc.centerX <= board.width / 2;
+    const topArc = arc.centerY <= board.height / 2;
+    const cornerX = leftArc ? x : maxX;
+    const cornerY = topArc ? y : maxY;
+    const insideX = leftArc ? cornerX <= arc.centerX : cornerX >= arc.centerX;
+    const insideY = topArc ? cornerY <= arc.centerY : cornerY >= arc.centerY;
+    if (!insideX || !insideY) continue;
     const arcClearance = arc.radius - Math.hypot(cornerX - arc.centerX, cornerY - arc.centerY);
     if (arcClearance > 0) clearance = Math.min(clearance, arcClearance);
   }
@@ -915,7 +912,7 @@ function buildGuideHtml({ board, profile, report }) {
     .map((layer) => `<tr><td><code>${escapeHtml(layer.shortLabel)}</code></td><td>${escapeHtml(layer.label)}</td><td><code>layers/${escapeHtml(layer.fileName)}</code></td><td><code>${escapeHtml(layer.intent)}</code></td></tr>`)
     .join("");
   const status = report.status;
-  return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>Image2PCB Art guide</title><style>body{font-family:Arial,sans-serif;max-width:880px;margin:40px auto;color:#18252b;line-height:1.6}code{background:#eef2ef;padding:2px 4px}table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #ccd6d4;padding:8px;text-align:left}h1{font-size:28px}.notice{padding:12px 16px;background:#fff3d7;border-left:4px solid #d28b2d}</style><h1>Image2PCB Art 制板指南</h1><p>板框：<strong>${mm(board.width)} × ${mm(board.height)} mm</strong>；Profile：<strong>${escapeHtml(profile.name)}</strong>（Experimental）；内部状态：<strong>${status}</strong>。</p><div class="notice">制造 ZIP 只含 RS-274X Gerber 六层：GTL、GBL、GTS、GBS、GTO、GKO；审阅 ZIP 另含 SVG、项目配置和报告。当前没有钻孔文件，因为此版本不支持孔。Gerber file polarity：<strong>SPEC_VERIFIED</strong>；material → mask opening mapping：<strong>EXTERNAL_UNVERIFIED</strong>。</div><h2>Gerber 层</h2><table><thead><tr><th>文件</th><th>含义</th><th>语义</th></tr></thead><tbody><tr><td><code>board.GTL</code></td><td>Top Copper</td><td>copper present</td></tr><tr><td><code>board.GBL</code></td><td>Bottom Copper</td><td>copper present</td></tr><tr><td><code>board.GTS</code></td><td>Top Solder Mask</td><td>solder-mask openings · mapping externally unverified</td></tr><tr><td><code>board.GBS</code></td><td>Bottom Solder Mask</td><td>solder-mask openings · mapping externally unverified</td></tr><tr><td><code>board.GTO</code></td><td>Top Silkscreen</td><td>silkscreen present</td></tr><tr><td><code>board.GKO</code></td><td>Board Outline</td><td>one closed outline</td></tr></tbody></table><h2>阻焊意图</h2><p>每个 material 必须为 top/bottom 声明 <code>COVER</code>、<code>OPEN</code> 或 <code>DEFAULT</code>。只有 <code>OPEN</code> 会生成 GTS/GBS opening geometry；<code>COVER</code> 和 <code>DEFAULT</code> 按 Profile 的 <code>maskDefault.top/bottom</code> 解析。</p><h2>检查顺序</h2><ol><li>只把 manufacturing ZIP 的六个根目录 Gerber 上传到 Gerber Viewer/JLCPCB；不要把 review ZIP 当制造上传包。</li><li>确认单位为 mm、下左原点、+X 向右、+Y 向上。</li><li>确认 Top/Bottom Solder Mask 表达的是开窗；X2 file polarity 已按规范声明，但 material mapping 仍需 fab/实板确认。</li><li>确认板框是唯一闭合轮廓且尺寸为 ${mm(board.width)} × ${mm(board.height)} mm。</li><li>查看 Gerber Viewer，再提交 JLCPCB DFM；如果需要人工审阅，可打开 review ZIP 中的 SVG。</li></ol><h2>去嘉立创下单</h2><p>把 manufacturing ZIP 直接拖进 jlc.com 的 PCB 下单页（无需解压），参数选择：<strong>板层 2 层 · 板厚 1.6mm · 阻焊颜色 蓝色 · 丝印颜色 白色 · 表面处理 HASL（有铅/无铅均可）</strong>。下单前在嘉立创 Gerber 预览里确认：图案与预期一致；深色细节在底层预览中，正面看不到属于正常现象（它们是背面铜层艺术）。这块板没有元件和孔，是纯装饰艺术板。</p><p><strong>提示：</strong>Preview is an approximation. Actual PCB color varies with manufacturing materials and process. READY 只代表 Image2PCB 内部检查通过，不代表工厂保证。</p></html>`;
+  return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>Image2PCB Art guide</title><style>body{font-family:Arial,sans-serif;max-width:880px;margin:40px auto;color:#18252b;line-height:1.6}code{background:#eef2ef;padding:2px 4px}table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #ccd6d4;padding:8px;text-align:left}h1{font-size:28px}.notice{padding:12px 16px;background:#fff3d7;border-left:4px solid #d28b2d}</style><h1>Image2PCB Art 制板指南</h1><p>板框：<strong>${mm(board.width)} × ${mm(board.height)} mm</strong>；Profile：<strong>${escapeHtml(profile.name)}</strong>（Experimental）；内部状态：<strong>${status}</strong>。</p><div class="notice">制造 ZIP 只含 RS-274X Gerber 六层：GTL、GBL、GTS、GBS、GTO、GKO；审阅 ZIP 另含 SVG、项目配置和报告。当前没有钻孔文件，因为此版本不支持孔。Gerber file polarity：<strong>SPEC_VERIFIED</strong>；material → mask opening mapping：<strong>EXTERNAL_UNVERIFIED</strong>。</div><h2>Gerber 层</h2><table><thead><tr><th>文件</th><th>含义</th><th>语义</th></tr></thead><tbody><tr><td><code>board.GTL</code></td><td>Top Copper</td><td>copper present</td></tr><tr><td><code>board.GBL</code></td><td>Bottom Copper</td><td>copper present</td></tr><tr><td><code>board.GTS</code></td><td>Top Solder Mask</td><td>solder-mask openings · mapping externally unverified</td></tr><tr><td><code>board.GBS</code></td><td>Bottom Solder Mask</td><td>solder-mask openings · mapping externally unverified</td></tr><tr><td><code>board.GTO</code></td><td>Top Silkscreen</td><td>silkscreen present</td></tr><tr><td><code>board.GKO</code></td><td>Board Outline</td><td>one closed outline</td></tr></tbody></table><h2>阻焊意图</h2><p>每个 material 必须为 top/bottom 声明 <code>COVER</code>、<code>OPEN</code> 或 <code>DEFAULT</code>。只有 <code>OPEN</code> 会生成 GTS/GBS opening geometry；<code>COVER</code> 和 <code>DEFAULT</code> 按 Profile 的 <code>maskDefault.top/bottom</code> 解析。</p><h2>检查顺序</h2><ol><li>只把 manufacturing ZIP 的六个根目录 Gerber 上传到 Gerber Viewer/JLCPCB；不要把 review ZIP 当制造上传包。</li><li>确认单位为 mm、下左原点、+X 向右、+Y 向上。</li><li>确认 Top/Bottom Solder Mask 表达的是开窗；X2 file polarity 已按规范声明，但 material mapping 仍需 fab/实板确认。</li><li>确认板框是唯一闭合轮廓且尺寸为 ${mm(board.width)} × ${mm(board.height)} mm。</li><li>查看 Gerber Viewer，再提交 JLCPCB DFM；如果需要人工审阅，可打开 review ZIP 中的 SVG。</li></ol><h2>去嘉立创下单</h2><p>把 manufacturing ZIP 直接拖进 jlc.com 的 PCB 下单页（无需解压），参数选择：<strong>板层 2 层 · 板厚 1.6mm · 阻焊颜色 蓝色 · 丝印颜色 白色 · 表面处理 HASL（有铅/无铅均可）</strong>。下单前在嘉立创 Gerber 预览里确认：图案与预期一致；深色细节在底层预览中，正面看不到属于正常现象（它们是背面铜层艺术）。这块板没有元件和孔，是纯装饰艺术板。</p><p><strong>提示：</strong>Preview is an approximation. Actual PCB color varies with manufacturing materials and process. READY 只代表 Image2PCB 内部检查通过，不代表工厂保证。</p><h2>外部验证清单</h2><p>要把本项目的 Blue Classic 档案从 Experimental 升级为 Validated，需要两步外部验证：① 把本 ZIP 传到 Gerber Viewer（嘉立创预览或 Ucamco 参考查看器）逐层复核极性/原点/镜像；② 真实打样一块并对照预览记录色差。完整步骤见仓库文档 <code>docs/external-validation-checklist.md</code>（<a href="https://github.com/xiaohai-uid/image2pcb-art/blob/main/docs/external-validation-checklist.md">github.com/xiaohai-uid/image2pcb-art</a>）。</p></html>`;
 }
 
 function slugify(value) {

@@ -6,7 +6,7 @@
 
 ## 3 分钟上手
 
-1. **打开应用**：本地起个静态服务（见下文 Run locally），或直接用 GitHub Pages。
+1. **打开应用**：直接用在线版 **<https://xiaohai-uid.github.io/image2pcb-art/>**，或本地起个静态服务（见下文 Run locally）。
 2. **上传一张图**：JPG / PNG / WebP 都行。大色块的图效果最好（logo、像素画、星空）。
 3. **检查全绿**：右栏「制造检查」全部打勾、状态变为 READY。红色项旁边有一句「怎么修」。
 4. **下载 ZIP 去下单**：点「Download manufacturing ZIP」，把 ZIP 直接拖进 [jlc.com](https://www.jlc.com) 的 PCB 下单页，参数选：
@@ -58,6 +58,12 @@ python -m http.server 4173
 `READY` 只代表 Image2PCB Art 内部的当前几何、Gerber round-trip、板框绑定、层语义和输入检查通过，不代表 Gerber Viewer、工厂 DFM 或实板确认。当前 Blue Classic 是 Experimental profile，真实颜色仍需通过校准卡、Gerber Viewer、JLCPCB DFM 和实板进行验证。
 
 导出的 Gerber ZIP 是 V1 主制造交付；SVG 位于 `review/`，只用于审阅/调试，也不是原生 EasyEDA `.epro` 工程。标准 Gerber file polarity 已按规范写入（`SPEC_VERIFIED`），但 material 到阻焊开窗的映射仍是 `EXTERNAL_UNVERIFIED`；正式送厂前仍需用独立 Gerber Viewer 检查阻焊语义、板框和镜像，再提交 JLCPCB DFM。当前软件尚未声称已通过真实工厂或实板验证。
+
+**想帮忙完成最后一步验证？** 按 [`docs/external-validation-checklist.md`](docs/external-validation-checklist.md) 操作：10 分钟的 Gerber Viewer 逐层复核 + 一单几十元的实物打样比对。通过后 Blue Classic 即可从 Experimental 升级为 Validated。审阅 ZIP 内的制板指南也附带了这份清单的摘要。
+
+## Deployment
+
+推送到 `main` 后，GitHub Actions 自动把站点文件部署到 GitHub Pages（workflow 见 `.github/workflows/deploy.yml`），并同步跑完整测试。发布以 Git 标签为准（当前 `v1.0.0-rc.1`，发布标签 `SOFTWARE RC / PHYSICAL VALIDATION PENDING`）。
 
 ## Development
 

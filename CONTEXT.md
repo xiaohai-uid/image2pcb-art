@@ -16,6 +16,7 @@ Gerber is the V1 primary manufacturing handoff. The manufacturing ZIP contains o
 - **Canonical Geometry** — board-coordinate geometry in millimetres, independent of the UI renderer. It is the single source for preview and export.
 - **Layer Intent** — the meaning of geometry on one layer. Copper, solder-mask coverage candidate, bottom copper, bottom solder-mask coverage candidate, and top silkscreen are distinct intents.
 - **Mask Intent** — an explicit per-side material state: `COVER`, `OPEN`, or `DEFAULT`. `DEFAULT` is resolved by the manufacturing profile's `maskDefault.top/bottom` contract before solder-mask opening geometry is emitted.
+- **Substrate Exposure** — a Material State flag (`substrateExposed`) marking that a mask opening over it reveals the board substrate itself (bare FR4), so the preview shows that state's own color; states without the flag read as bare FR4 under an opening.
 - **Gerber X2 metadata** — each emitted layer also declares standard `FileFunction`, `FilePolarity`, and `Part=Single` attributes. GTS/GBS are machine-declared `Soldermask,Top/Bot` with `Negative` file polarity; X2 polarity is `SPEC_VERIFIED`, while material-to-mask mapping remains `EXTERNAL_UNVERIFIED`.
 - **Manufacturing Package** — one deterministic ZIP containing only the six root Gerber layers for Gerber Viewer/JLCPCB upload.
 - **Review Package** — a separate deterministic ZIP containing the project metadata, manifest, report, guide, review SVGs, and optional PNG previews; it is not a fab upload.
