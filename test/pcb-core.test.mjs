@@ -320,6 +320,17 @@ test("blocks export when a material omits one side of maskIntent", () => {
   assert.throws(() => buildManufacturingPackage(project), /BLOCKED/);
 });
 
+test("blocks export when a maskIntent value is not a recognized intent", () => {
+  const invalidMaterials = materials.map((material, index) => index === 0
+    ? { ...material, maskIntent: { top: "open", bottom: "COVER" } }
+    : material);
+  const project = makeProject({ materials: invalidMaterials });
+
+  assert.equal(project.report.status, "BLOCKED");
+  assert.ok(project.report.checks.some((check) => check.id === "mask-intent-contract" && !check.pass));
+  assert.throws(() => buildManufacturingPackage(project), /BLOCKED/);
+});
+
 test("returns a deterministic ZIP with a stable manufacturing package contract", () => {
   const project = makeProject();
   const first = buildManufacturingPackage(project);

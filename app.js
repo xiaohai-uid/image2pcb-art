@@ -11,8 +11,8 @@ import {
   isCellInsideBoard,
   isSideMaskOpening,
   renderedMaterialColor,
-} from "./pcb-core.mjs?v=20260822-3";
-import { quantizeMaterialGrid } from "./image-quantizer.mjs?v=20260822-3";
+} from "./pcb-core.mjs?v=20260822-4";
+import { quantizeMaterialGrid } from "./image-quantizer.mjs?v=20260822-4";
 
 // Physically derived swatch colors come from the core's single source of truth;
 // the remaining entries are palette identities calibrated for Blue Classic.
@@ -22,7 +22,6 @@ const palette = [
     label: "White silk",
     shortLabel: "WHITE SILK",
     color: "#eeeadd",
-    rgb: [238, 234, 221],
     layers: { topCopper: false, bottomCopper: false, silk: true },
     maskIntent: { top: "DEFAULT", bottom: "DEFAULT" },
   },
@@ -31,7 +30,6 @@ const palette = [
     label: "HASL silver",
     shortLabel: "HASL SILVER",
     color: RENDER_COLORS.hasl,
-    rgb: [183, 194, 197],
     layers: { topCopper: true, bottomCopper: false, silk: false },
     maskIntent: { top: "OPEN", bottom: "DEFAULT" },
   },
@@ -40,7 +38,6 @@ const palette = [
     label: "Blue + copper",
     shortLabel: "BLUE + CU",
     color: "#4e8da5",
-    rgb: [78, 141, 165],
     layers: { topCopper: true, bottomCopper: false, silk: false },
     maskIntent: { top: "COVER", bottom: "DEFAULT" },
   },
@@ -49,7 +46,6 @@ const palette = [
     label: "Blue + FR4",
     shortLabel: "BLUE + FR4",
     color: RENDER_COLORS.blueOverFr4,
-    rgb: [40, 100, 123],
     layers: { topCopper: false, bottomCopper: false, silk: false },
     maskIntent: { top: "COVER", bottom: "DEFAULT" },
   },
@@ -59,7 +55,6 @@ const palette = [
     shortLabel: "BARE FR4",
     substrateExposed: true,
     color: RENDER_COLORS.bareFr4,
-    rgb: [183, 154, 107],
     layers: { topCopper: false, bottomCopper: false, silk: false },
     maskIntent: { top: "OPEN", bottom: "OPEN" },
   },
@@ -68,11 +63,19 @@ const palette = [
     label: "Deep blue",
     shortLabel: "DEEP BLUE",
     color: "#163c55",
-    rgb: [22, 60, 85],
     layers: { topCopper: false, bottomCopper: true, silk: false },
     maskIntent: { top: "COVER", bottom: "COVER" },
   },
 ];
+
+// The quantizer targets RGB triplets derived from each swatch's hex, so the
+// hex value is the only place a color is ever written.
+function hexToRgb(hex) {
+  const value = Number.parseInt(String(hex).replace("#", ""), 16);
+  return [(value >> 16) & 255, (value >> 8) & 255, value & 255];
+}
+
+for (const item of palette) item.rgb = hexToRgb(item.color);
 
 const layerDefinitions = LAYER_DEFINITIONS;
 
@@ -355,7 +358,8 @@ function buildImageGrid() {
     const layerCandidate = copperCandidate || closest.layers.silk
       || isSideMaskOpening(closest, "top", BLUE_CLASSIC_PROFILE.maskDefault)
       || isSideMaskOpening(closest, "bottom", BLUE_CLASSIC_PROFILE.maskDefault);
-    const needsBoardFitFix = layerCandidate && !isCellInsideBoard(cellIndex, { cols, rows }, state.board);    if (needsEdgeFix || needsBoardFitFix) {
+    const needsBoardFitFix = layerCandidate && !isCellInsideBoard(cellIndex, { cols, rows }, state.board);
+    if (needsEdgeFix || needsBoardFitFix) {
       closest = paletteById.get("blueFr4");
       if (needsEdgeFix) copperEdgeCells += 1;
       if (needsRoundedCornerFix) copperRoundedCornerCells += 1;

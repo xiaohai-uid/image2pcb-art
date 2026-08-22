@@ -27,7 +27,7 @@
 | `board.GTO` | 顶层丝印 | 白丝印单元的图案；底层无丝印文件（V1 只有顶层丝印） |
 | 全局 | 原点 | 板左下角为原点（board-lower-left），mm 单位 |
 
-**记录**：在 `current-release-validation.json` 中把 viewer 复核结果（查看器名称、日期、逐层结论）追加到 `source`/`artifacts` 旁的验证记录，并把 ADR 0001 的映射状态从 `EXTERNAL_UNVERIFIED` 改为 `VIEWER_VERIFIED`（仍不是 fab-verified）。
+**记录**：在 `current-release-validation.json` 中把 viewer 复核结果（查看器名称、日期、逐层结论）追加到 `source`/`artifacts` 旁的验证记录，并把映射状态沿 CONTEXT.md 的「Mapping Verification Status」阶梯从 `EXTERNAL_UNVERIFIED` 推进到 `VIEWER_VERIFIED`（尚未 `FAB_VERIFIED`）。
 
 ## 第 2 节：实物打样比对（几十元，1–2 周）
 
@@ -48,8 +48,8 @@
 | 圆角半径、板尺寸 | 与配置一致 |
 | 开窗位置 | 与预览"露铜/露底"一致 |
 
-4. 把每个色差结论写进 profile 的校准注释，必要时微调 palette RGB（**必须**同步 `RENDER_COLORS` 与 palette，保持单一来源），重跑全部测试。
-5. 全部通过后：`validationStatus: experimental → validated`，发布标签改为 `PHYSICAL VALIDATED`。
+4. 把每个色差结论写进 profile 的校准注释，必要时微调色值：palette 的 `color` 引用 core 的 `RENDER_COLORS`（RGB 由 hex 自动派生），改一处即可，重跑全部测试。
+5. **三道门全部通过**后才升级（CONTEXT.md「Validated Profile」要求）：① 第 1 节 Viewer 逐层复核通过；② 嘉立创 DFM **无阻断项**（警告须逐条记录并评估）；③ 实板比对通过。三者齐备后：映射状态沿验证阶梯推进到 `FAB_VERIFIED`，`validationStatus: experimental → validated`，发布标签改为 `PHYSICAL VALIDATED`。
 
 ## 红线
 

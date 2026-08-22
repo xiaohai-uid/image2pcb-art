@@ -63,7 +63,7 @@ python -m http.server 4173
 
 ## Deployment
 
-推送到 `main` 后，GitHub Actions 自动把站点文件部署到 GitHub Pages（workflow 见 `.github/workflows/deploy.yml`），并同步跑完整测试。发布以 Git 标签为准（当前 `v1.0.0-rc.1`，发布标签 `SOFTWARE RC / PHYSICAL VALIDATION PENDING`）。
+推送到 `main` 后，GitHub Actions 先跑完整验证（核心单测 + 语法检查 + Chromium 浏览器冒烟），全部通过才把站点文件部署到 GitHub Pages——线上永远是测试过的那个 commit（workflow 见 `.github/workflows/ci.yml` 的 `verify` → `deploy-pages` 两个任务）。发布以 Git 标签为准（当前 `v1.0.0-rc.1`，发布标签 `SOFTWARE RC / PHYSICAL VALIDATION PENDING`）。
 
 ## Development
 
