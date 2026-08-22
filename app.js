@@ -3,7 +3,8 @@
 import {
   FINISHES,
   LAYER_DEFINITIONS,
-  MASK_COLORWAYS,
+  MASK_COLORS,
+  rgbToHex,
   buildManufacturingPackage,
   buildMaterials,
   buildProfile,
@@ -456,13 +457,13 @@ function renderCollisions() {
 }
 
 function renderColorways() {
-  dom.maskColorRow.innerHTML = Object.entries(MASK_COLORWAYS)
+  dom.maskColorRow.innerHTML = Object.entries(MASK_COLORS)
     .map(
       ([key, def]) => `
         <button type="button" class="colorway-swatch${key === state.profile.params.maskColor ? " is-active" : ""}"
           data-mask="${key}" role="radio" aria-checked="${key === state.profile.params.maskColor}"
           title="${def.label}色阻焊（占位色，待实物校准）">
-          <span style="background:#${def.overCopper.map((c) => c.toString(16).padStart(2, "0")).join("")}"></span>${def.label}
+          <span style="background:${rgbToHex(def.overCopper)}"></span>${def.label}
         </button>`,
     )
     .join("");
@@ -471,34 +472,41 @@ function renderColorways() {
     .join("");
 }
 
+function regenerateProject() {
+  rebuildGrid();
+  state.project = generatePCBArtProject({
+    grid: state.grid,
+    gridSize: state.gridSize,
+    board: state.board,
+    materials: palette,
+    source: {
+      fileName: state.sourceName,
+      width: state.image?.naturalWidth ?? null,
+      height: state.image?.naturalHeight ?? null,
+    },
+    imagePresent: Boolean(state.image),
+    adjustments: state.adjustments,
+    autoFixes: state.autoFixes,
+    profile: state.profile,
+  });
+  renderOriginal();
+  renderPcb();
+  renderLayerToggles();
+  evaluateManufacturability(state.project);
+  updateOutputs();
+  setFeedback();
+  dom.sourceLabel.textContent = state.sourceName;
+  dom.sourceStatus.innerHTML = `<span class="status-dot"></span><span>${state.image ? "本地读取 · 未上传服务器" : "当前使用内置校准样本"}</span>`;
+  dom.radiusField.style.opacity = state.board.rounded ? "1" : "0.42";
+  dom.radiusInput.disabled = !state.board.rounded;
+}
+
 function applyColorwayChange(patch) {
   setColorway(patch);
   renderColorways();
   renderPalette();
   renderCollisions();
-  if (state.grid) {
-    rebuildGrid();
-    state.project = generatePCBArtProject({
-      grid: state.grid,
-      gridSize: state.gridSize,
-      board: state.board,
-      materials: palette,
-      source: {
-        fileName: state.sourceName,
-        width: state.image?.naturalWidth ?? null,
-        height: state.image?.naturalHeight ?? null,
-      },
-      imagePresent: Boolean(state.image),
-      adjustments: state.adjustments,
-      autoFixes: state.autoFixes,
-      profile: state.profile,
-    });
-    renderOriginal();
-    renderPcb();
-    evaluateManufacturability(state.project);
-    updateOutputs();
-    setFeedback();
-  }
+  if (state.grid) regenerateProject();
 }
 
 dom.maskColorRow.addEventListener("click", (event) => {
@@ -599,32 +607,7 @@ function rebuildGrid() {
 }
 
 function renderAll() {
-  rebuildGrid();
-  state.project = generatePCBArtProject({
-    grid: state.grid,
-    gridSize: state.gridSize,
-    board: state.board,
-    materials: palette,
-    source: {
-      fileName: state.sourceName,
-      width: state.image?.naturalWidth ?? null,
-      height: state.image?.naturalHeight ?? null,
-    },
-    imagePresent: Boolean(state.image),
-    adjustments: state.adjustments,
-    autoFixes: state.autoFixes,
-    profile: state.profile,
-  });
-  renderOriginal();
-  renderPcb();
-  renderLayerToggles();
-  evaluateManufacturability(state.project);
-  updateOutputs();
-  setFeedback();
-  dom.sourceLabel.textContent = state.sourceName;
-  dom.sourceStatus.innerHTML = `<span class="status-dot"></span><span>${state.image ? "本地读取 · 未上传服务器" : "当前使用内置校准样本"}</span>`;
-  dom.radiusField.style.opacity = state.board.rounded ? "1" : "0.42";
-  dom.radiusInput.disabled = !state.board.rounded;
+  regenerateProject();
 }
 
 function readImage(file) {

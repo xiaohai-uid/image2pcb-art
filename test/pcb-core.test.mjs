@@ -35,13 +35,13 @@ test("matches by CIELAB so a pure neutral beats a chromatic metal at similar lig
     width: 2,
     height: 1,
     palette: [
-      { id: "haslSilver", rgb: [183, 194, 197] },
-      { id: "enigGold", rgb: [198, 166, 96] },
+      { id: "silverTone", rgb: [183, 194, 197] },
+      { id: "goldTone", rgb: [198, 166, 96] },
     ],
     diffusionStrength: 0,
   });
 
-  assert.equal(result.grid[0], "haslSilver");
+  assert.equal(result.grid[0], "silverTone");
 });
 
 test("diffuses a mid-tone across material states instead of collapsing it to one flat state", () => {
@@ -558,13 +558,35 @@ test("contrast guard swaps silkscreen ink when it would vanish into the mask", (
 });
 
 test("collision warnings surface near-identical tones without disabling them", () => {
+  // Worked example: [198,166,96] vs [192,160,90] → ΔE76 ≈ 2.9 (well under 12).
   const closePair = [
-    { id: "a", rgb: [198, 166, 96] },
-    { id: "b", rgb: [192, 160, 90] },
+    { id: "goldTone", rgb: [198, 166, 96] },
+    { id: "amberTone", rgb: [192, 160, 90] },
   ];
-  assert.deepEqual(findCollisions(closePair), [{ ids: ["a", "b"], deltaE: findCollisions(closePair)[0].deltaE }]);
-  assert.ok(findCollisions(closePair)[0].deltaE < 12);
+  const collisions = findCollisions(closePair);
+  assert.deepEqual(collisions.map((pair) => pair.ids), [["goldTone", "amberTone"]]);
+  assert.ok(collisions[0].deltaE > 2 && collisions[0].deltaE < 4, `unexpected ΔE ${collisions[0].deltaE}`);
 
-  const distinct = buildMaterials(buildProfile());
-  assert.deepEqual(findCollisions(distinct), []);
+  // Real colorway map: dark/low-chroma masks collide copper-vs-FR4 tones;
+  // the deepest gap is black's maskedFr4 vs maskedBottomCopper (ΔE≈4.9).
+  const expected = {
+    black: [["maskedCopper", "maskedFr4"], ["maskedFr4", "maskedBottomCopper"]],
+    yellow: [["maskedCopper", "maskedFr4"]],
+    white: [["maskedCopper", "maskedFr4"]],
+  };
+  for (const mask of ["green", "black", "red", "purple", "yellow", "blue", "white"]) {
+    for (const finish of ["hasl", "enig"]) {
+      const found = findCollisions(buildMaterials(buildProfile({ maskColor: mask, finish })));
+      assert.deepEqual(
+        found.map((pair) => pair.ids),
+        expected[mask] ?? [],
+        `${mask}/${finish}`,
+      );
+    }
+  }
+});
+
+test("renderedMaterialColor refuses to guess when no profile is supplied", () => {
+  const material = buildMaterials(buildProfile())[0];
+  assert.throws(() => renderedMaterialColor({ material, side: "top", visibility: {} }), /requires a colorway profile/);
 });

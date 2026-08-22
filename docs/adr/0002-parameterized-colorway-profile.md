@@ -17,4 +17,6 @@ Material State identifiers name the layer combination (`silk`, `maskedCopper`, `
 
 ## Consequences
 
-Every colorway's color values are placeholders pending physical calibration; all colorways are equally `EXTERNAL_UNVERIFIED` and the release label stays `SOFTWARE RC / PHYSICAL VALIDATION PENDING` for all of them. Perceptual near-collisions between states under some colorways (e.g. ENIG gold vs bare FR4) are surfaced as Collision Warnings, never auto-disabled. Existing exports made before this change reference the old color-named identifiers and do not correspond to current project files; no migration is provided.
+Every colorway's color values are placeholders pending physical calibration; all colorways are equally `EXTERNAL_UNVERIFIED` and the release label stays `SOFTWARE RC / PHYSICAL VALIDATION PENDING` for all of them. Collision Warnings are warn-only by contract. On current tables they fire for the low-chroma masks — black (copper-vs-FR4 plus FR4-vs-bottom-art), yellow and white (copper-vs-FR4) — while green, red, purple and blue stay clear; switching surface finish does not change any pair. Bottom-copper art keeps a darkened identity tone (`overFr4 × 0.6`) so dark image regions still land on the back layer, while its physical back face renders as mask-over-copper.
+
+Existing exports made before this change reference the old color-named identifiers and do not correspond to current project files; no migration is provided.

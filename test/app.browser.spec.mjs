@@ -78,6 +78,10 @@ test("keeps the local upload, readiness gate, exports, and responsive layout usa
   await page.locator('[data-mask="green"]').click();
   await expect(page.locator('[data-mask="green"]')).toHaveAttribute("aria-checked", "true");
   await expect(page.locator("#collisionNote")).toBeHidden();
+  // Dark masks genuinely collide copper-vs-FR4 tones; the warning must appear.
+  await page.locator('[data-mask="black"]').click();
+  await expect(page.locator("#collisionNote")).toBeVisible();
+  await expect(page.locator("#readinessText")).toHaveText("READY");
   await page.locator("#finishSelect").selectOption("enig");
   await expect(page.locator("#readinessText")).toHaveText("READY");
   await page.locator('[data-mask="blue"]').click();
