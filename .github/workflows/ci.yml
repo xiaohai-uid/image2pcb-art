@@ -62,6 +62,8 @@ jobs:
         run: |
           mkdir -p _site
           cp index.html app.js pcb-core.mjs image-quantizer.mjs styles.css favicon.svg _site/
+          mkdir -p _site/examples
+          cp examples/moonridge.png _site/examples/
 
       - name: Configure Pages
         uses: actions/configure-pages@v5

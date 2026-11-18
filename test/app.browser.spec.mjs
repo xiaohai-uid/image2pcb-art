@@ -142,3 +142,16 @@ test("keeps the local upload, readiness gate, exports, and responsive layout usa
   expect(failedResponses).toEqual([]);
   expect(externalRequests).toEqual([]);
 });
+
+
+test("exports the bundled example and restores the calibration view", async ({ page }) => {
+  await page.goto("/");
+  await page.locator("#exampleButton").click();
+  await expect(page.locator("#sourceLabel")).toHaveText("moonridge.png");
+  await expect(page.locator("#readinessText")).toHaveText("READY");
+  const download = page.waitForEvent("download");
+  await page.locator("#exportButton").click();
+  expect((await download).suggestedFilename()).toMatch(/\.zip$/i);
+  await page.locator("#resetButton").click();
+  await expect(page.locator("#exportButton")).toBeDisabled();
+});
