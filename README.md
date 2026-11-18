@@ -8,6 +8,8 @@
 
 ![可直接载入工具的山月示例图](examples/moonridge.png)
 
+**English quick start.** Open the [browser tool](https://xiaohai-uid.github.io/image2pcb-art/) and choose **试用示例图 · 山月** to load the sample. Compare the front and back previews, then choose **Download manufacturing ZIP** when the checks show **READY**. The ZIP contains six Gerber files for a two-layer decorative board. Check the layers in a Gerber viewer before fabrication.
+
 ## 3 分钟上手
 
 1. **打开应用**：直接用在线版 **<https://xiaohai-uid.github.io/image2pcb-art/>**，或本地起个静态服务（见下文 Run locally）。
