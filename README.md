@@ -4,10 +4,14 @@
 
 灵感与工艺参考 [oshwhub「梵高星空PCB」](https://oshwhub.com/sytnocui/star-pcb-drawing)：不是彩色丝印，而是把图片颜色量化成**丝印 / 阻焊 / 铜皮**几种真实 PCB 材料的组合——蓝漆、白字、露铜、裸基材，每种颜色都是工厂真的做得出来的。
 
+[打开在线工具](https://xiaohai-uid.github.io/image2pcb-art/) · [下载示例 PNG](examples/moonridge.png)
+
+![可直接载入工具的山月示例图](examples/moonridge.png)
+
 ## 3 分钟上手
 
 1. **打开应用**：直接用在线版 **<https://xiaohai-uid.github.io/image2pcb-art/>**，或本地起个静态服务（见下文 Run locally）。
-2. **上传一张图**：JPG / PNG / WebP 都行。大色块的图效果最好（logo、像素画、星空）。
+2. **上传一张图**：直接点「试用示例图 · 山月」，也可以选自己的 JPG / PNG / WebP。大色块的图效果最好（logo、像素画、星空）。
 3. **检查全绿**：右栏「制造检查」全部打勾、状态变为 READY。红色项旁边有一句「怎么修」。
 4. **下载 ZIP 去下单**：点「Download manufacturing ZIP」，把 ZIP 直接拖进 [jlc.com](https://www.jlc.com) 的 PCB 下单页，参数选：
 
@@ -17,8 +21,7 @@
 | 板厚 | 1.6 mm（默认） |
 | 阻焊颜色 | 应用内 COLORWAY 任选（绿/黑/红/紫/黄/蓝/白），默认蓝色 |
 | 表面处理 | HASL / 沉金 ENIG，应用内任选 |
-| 丝印颜色 | **白色** |
-| 表面处理 | 有铅 / 无铅 HASL 均可 |
+| 丝印颜色 | 白色阻焊对应黑色丝印，其余阻焊对应白色丝印。可在导出指南里核对本次配色。 |
 
 ## 常见问题
 

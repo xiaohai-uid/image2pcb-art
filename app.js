@@ -15,8 +15,8 @@ import {
   isCellInsideBoard,
   isSideMaskOpening,
   renderedMaterialColor,
-} from "./pcb-core.mjs?v=20260822-5";
-import { quantizeMaterialGrid } from "./image-quantizer.mjs?v=20260822-5";
+} from "./pcb-core.mjs?v=20261118-1";
+import { quantizeMaterialGrid } from "./image-quantizer.mjs?v=20261118-1";
 
 // The palette is derived from the active colorway (ADR 0002). buildMaterials is
 // the single source for identities, colors, and quantizer targets.
@@ -610,21 +610,34 @@ function renderAll() {
   regenerateProject();
 }
 
+let imageRequest = 0;
+
 function readImage(file) {
   if (!file || !file.type.startsWith("image/")) return;
-  const url = URL.createObjectURL(file);
+  loadImageSource(URL.createObjectURL(file), file.name);
+}
+
+function loadImageSource(url, name) {
+  const request = ++imageRequest;
+  const release = () => { if (url.startsWith("blob:")) URL.revokeObjectURL(url); };
   const image = new Image();
   image.onload = () => {
+    if (request !== imageRequest) { release(); return; }
     if (state.image?.src?.startsWith("blob:")) URL.revokeObjectURL(state.image.src);
     state.image = image;
-    state.sourceName = file.name;
+    state.sourceName = name;
     renderAll();
     dom.uploadDropzone.classList.remove("is-dragging");
+  };
+  image.onerror = () => {
+    release();
+    if (request === imageRequest) setFeedback("未能读取图像，请重试");
   };
   image.src = url;
 }
 
 function restoreSample() {
+  imageRequest++;
   if (state.image?.src?.startsWith("blob:")) URL.revokeObjectURL(state.image.src);
   state.image = null;
   state.sourceName = "Calibration sample";
@@ -676,6 +689,10 @@ function exportReviewPackage() {
 }
 
 function bindEvents() {
+  document.querySelector("#exampleButton").addEventListener("click", () => {
+    dom.imageInput.value = "";
+    loadImageSource("./examples/moonridge.png", "moonridge.png");
+  });
   dom.imageInput.addEventListener("change", (event) => readImage(event.target.files?.[0]));
   dom.uploadDropzone.addEventListener("dragover", (event) => {
     event.preventDefault();
